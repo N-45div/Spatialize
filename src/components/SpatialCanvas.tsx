@@ -19,10 +19,14 @@ function polygonShape(points: Point[]) {
 
 export function SpatialCanvas({
   scene,
-  route
+  route,
+  selectedId,
+  mode
 }: {
   scene: SpatialScene;
   route: Point[];
+  selectedId: string;
+  mode: "3d" | "2d";
 }) {
   const host = useRef<HTMLDivElement>(null);
 
@@ -30,14 +34,18 @@ export function SpatialCanvas({
     if (!host.current) return;
     const container = host.current;
     const world = new THREE.Scene();
-    world.background = new THREE.Color(0x0a1412);
-    world.fog = new THREE.Fog(0x0a1412, 20, 42);
+    world.background = new THREE.Color(0x08110f);
+    world.fog = new THREE.FogExp2(0x08110f, 0.027);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    camera.position.set(18, 20, 22);
+    if (mode === "2d") camera.position.set(7.5, 29, 6.5);
+    else camera.position.set(18, 20, 22);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
@@ -46,6 +54,7 @@ export function SpatialCanvas({
     controls.target.set(7.5, 0, 6.5);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
+    controls.enableRotate = mode === "3d";
 
     world.add(new THREE.HemisphereLight(0xdfffea, 0x101511, 2.4));
     const sun = new THREE.DirectionalLight(0xfff3cf, 3.6);
@@ -54,8 +63,8 @@ export function SpatialCanvas({
     world.add(sun);
 
     const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(17, 0.35, 15),
-      new THREE.MeshStandardMaterial({ color: 0x17231f, roughness: 0.82 })
+      new THREE.BoxGeometry(17.4, 0.4, 15.4),
+      new THREE.MeshStandardMaterial({ color: 0x15231f, roughness: 0.72, metalness: 0.08 })
     );
     plinth.position.set(7.5, -0.25, 6.5);
     plinth.receiveShadow = true;
@@ -98,21 +107,37 @@ export function SpatialCanvas({
       }
     });
 
+    const markerGroup = new THREE.Group();
+    world.add(markerGroup);
     scene.landmarks.forEach((landmark) => {
       const [x, z] = landmark.position;
+      const isSelected = landmark.id === selectedId;
       const marker = new THREE.Mesh(
         landmark.type === "entrance"
           ? new THREE.CylinderGeometry(0.24, 0.36, 0.8, 6)
-          : new THREE.CylinderGeometry(0.18, 0.18, 0.55, 20),
+          : new THREE.CylinderGeometry(isSelected ? 0.24 : 0.17, isSelected ? 0.24 : 0.17, isSelected ? 0.78 : 0.55, 24),
         new THREE.MeshStandardMaterial({
-          color: landmark.type === "entrance" ? 0xffce6a : 0x8de6c1,
+          color: isSelected ? 0xffcc62 : landmark.type === "entrance" ? 0xffce6a : 0x8de6c1,
           emissive: landmark.type === "entrance" ? 0x4a2e00 : 0x0d4b37,
-          emissiveIntensity: 0.45
+          emissiveIntensity: isSelected ? 1.2 : 0.45
         })
       );
       marker.position.set(x, 0.65, z);
       marker.castShadow = true;
-      world.add(marker);
+      marker.userData.baseY = marker.position.y;
+      marker.userData.selected = isSelected;
+      markerGroup.add(marker);
+
+      if (isSelected) {
+        const halo = new THREE.Mesh(
+          new THREE.RingGeometry(0.46, 0.55, 40),
+          new THREE.MeshBasicMaterial({ color: 0xffcc62, transparent: true, opacity: 0.72, side: THREE.DoubleSide })
+        );
+        halo.rotation.x = -Math.PI / 2;
+        halo.position.set(x, 0.32, z);
+        halo.userData.halo = true;
+        markerGroup.add(halo);
+      }
     });
 
     if (route.length > 1) {
@@ -131,9 +156,24 @@ export function SpatialCanvas({
         })
       );
       world.add(path);
+
+      route.slice(1, -1).forEach(([x, z], index) => {
+        const waypoint = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0xffd878 })
+        );
+        waypoint.position.set(x, 0.5, z);
+        waypoint.userData.waypoint = index;
+        world.add(waypoint);
+      });
     }
 
-    const grid = new THREE.GridHelper(40, 40, 0x355449, 0x1a2b25);
+    const grid = new THREE.GridHelper(40, 40, 0x355449, 0x172923);
+    const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gridMaterials.forEach((material) => {
+      material.transparent = true;
+      material.opacity = 0.34;
+    });
     grid.position.y = -0.05;
     world.add(grid);
 
@@ -148,8 +188,23 @@ export function SpatialCanvas({
     observer.observe(container);
     resize();
 
+    const clock = new THREE.Clock();
     let frame = 0;
     const animate = () => {
+      const elapsed = clock.getElapsedTime();
+      markerGroup.children.forEach((object) => {
+        if (object.userData.selected) object.position.y = object.userData.baseY + Math.sin(elapsed * 2.4) * 0.08;
+        if (object.userData.halo) {
+          const pulse = 1 + Math.sin(elapsed * 2.4) * 0.12;
+          object.scale.setScalar(pulse);
+        }
+      });
+      world.traverse((object) => {
+        if (typeof object.userData.waypoint === "number") {
+          const pulse = 0.85 + Math.sin(elapsed * 3 - object.userData.waypoint) * 0.2;
+          object.scale.setScalar(pulse);
+        }
+      });
       controls.update();
       renderer.render(world, camera);
       frame = requestAnimationFrame(animate);
@@ -170,7 +225,7 @@ export function SpatialCanvas({
         }
       });
     };
-  }, [scene, route]);
+  }, [scene, route, selectedId, mode]);
 
   return <div className="spatial-canvas" ref={host} aria-label="Interactive 3D venue map" />;
 }
