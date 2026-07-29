@@ -147,6 +147,10 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   box-shadow: 0 10px 30px rgba(0, 0, 0, .11);
 }
 .source-card:hover { border-color: #4c675c; transform: translateY(-1px); }
+.source-card.uploading { border-color: #6d7b3f; }
+.source-card.stored { border-color: #3f6f5b; }
+.source-card.error { border-color: #8a5044; }
+.source-card.error small { color: #d88c7b; }
 .source-card strong, .source-card small { display: block; font-size: 10px; }
 .source-card small { margin-top: 5px; color: #687a73; font-size: 8px; }
 .replace-label { color: var(--mint); font: 8px "DM Mono"; }

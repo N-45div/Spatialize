@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { SpatialCanvas } from "./components/SpatialCanvas";
 import { sampleScene } from "./data/sample-scene";
+import { createIngestionRun, type IngestionRun } from "./lib/api";
 import { routeToLandmark } from "./lib/routes";
 
 function downloadScene() {
@@ -18,6 +19,10 @@ export default function App() {
   const [destination, setDestination] = useState(destinations[0].id);
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [sourceName, setSourceName] = useState("ground-floor-plan.pdf");
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "stored" | "error">("idle");
+  const [uploadMessage, setUploadMessage] = useState("2.8 MB · 2480 × 1754");
+  const [ingestionRun, setIngestionRun] = useState<IngestionRun | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const route = useMemo(() => routeToLandmark(sampleScene, destination), [destination]);
   const selected = sampleScene.landmarks.find((item) => item.id === destination)!;
@@ -44,6 +49,30 @@ export default function App() {
     window.speechSynthesis.speak(narration);
   }
 
+  async function handlePlanSelected(file: File | undefined) {
+    if (!file) return;
+    setSourceName(file.name);
+    setUploadState("uploading");
+    setUploadMessage("Hashing and securing source…");
+    try {
+      const run = await createIngestionRun(file);
+      setIngestionRun(run);
+      setUploadState("stored");
+      setUploadMessage(`${(run.source.size / 1024).toFixed(1)} KB · SHA ${run.source.sha256.slice(0, 8)}`);
+    } catch (error) {
+      setUploadState("error");
+      setUploadMessage(error instanceof Error ? error.message : "Plan upload failed");
+    } finally {
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  const storageLabel = ingestionRun?.source.uri.startsWith("b2://")
+    ? "Synced to B2"
+    : ingestionRun
+      ? "Source secured"
+      : "Demo scene";
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -53,7 +82,7 @@ export default function App() {
         </a>
         <div className="topbar-copy"><span>Projects</span><b>/</b><strong>Harbor Arts Centre</strong></div>
         <div className="topbar-actions">
-          <div className="b2-state"><span /> Synced to B2 <small>12 assets</small></div>
+          <div className="b2-state"><span /> {storageLabel} <small>{ingestionRun ? "1 hashed asset" : "sample data"}</small></div>
           <button className="share-action" onClick={downloadScene}>Share package</button>
         </div>
       </header>
@@ -64,18 +93,24 @@ export default function App() {
           <h1>{sampleScene.name}</h1>
           <p className="lede">A flat venue plan transformed into a navigable, accessible spatial twin.</p>
 
-          <button className="source-card" onClick={() => fileInput.current?.click()}>
+          <button className={`source-card ${uploadState}`} onClick={() => fileInput.current?.click()}>
             <div className="source-thumb">
               <span>PDF</span>
               <div className="mini-plan"><i /><i /><i /></div>
             </div>
-            <div><strong>ground-floor-plan.pdf</strong><small>2.8 MB · 2480 × 1754</small></div>
-            <span className="replace-label">Replace</span>
+            <div><strong>{sourceName}</strong><small>{uploadMessage}</small></div>
+            <span className="replace-label">{uploadState === "uploading" ? "Saving" : "Replace"}</span>
           </button>
-          <input ref={fileInput} type="file" hidden accept="image/*,.pdf" />
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            accept="image/png,image/jpeg,image/webp,application/pdf"
+            onChange={(event) => void handlePlanSelected(event.target.files?.[0])}
+          />
 
           <div className="compile-proof">
-            <span>Generated with Genblaze</span>
+            <span>{ingestionRun ? `Run ${ingestionRun.runId}` : "Validated spatial contract"}</span>
             <div><i /> 6 rooms</div><div><i /> 9 route nodes</div><div><i /> 5 landmarks</div>
           </div>
 
