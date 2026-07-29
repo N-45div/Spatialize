@@ -30,6 +30,8 @@ export function routeToLandmark(scene: SpatialScene, landmarkId: string) {
     }
   }
 
+  if (!distances.has(target.id)) return [];
+
   const path: string[] = [];
   let cursor: string | undefined = target.id;
   while (cursor) {
