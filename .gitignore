@@ -1,5 +1,10 @@
 node_modules
 dist
+.venv
+backend/.venv
+backend/.local-data
+__pycache__/
+.pytest_cache/
 .env
 .DS_Store
 .internal/
