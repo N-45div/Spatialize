@@ -21,7 +21,7 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const route = useMemo(() => routeToLandmark(sampleScene, destination), [destination]);
   const selected = sampleScene.landmarks.find((item) => item.id === destination)!;
-  const lowConfidence = [...sampleScene.rooms, ...sampleScene.landmarks]
+  const lowConfidence = [...sampleScene.rooms, ...sampleScene.doors, ...sampleScene.landmarks]
     .filter((item) => item.confidence < 0.85).length;
   const routeDistance = useMemo(() => route.slice(1).reduce((total, point, index) => {
     const previous = route[index];
@@ -60,7 +60,7 @@ export default function App() {
 
       <section className="workspace">
         <aside className="sidebar">
-          <div className="eyebrow"><span>Project 01</span><b>Scene v1.4</b></div>
+          <div className="eyebrow"><span>Project 01</span><b>Scene schema v1.1</b></div>
           <h1>{sampleScene.name}</h1>
           <p className="lede">A flat venue plan transformed into a navigable, accessible spatial twin.</p>
 
@@ -144,7 +144,7 @@ export default function App() {
           <div className="metric-grid">
             <div><strong>{sampleScene.rooms.length}</strong><span>Rooms</span></div>
             <div><strong>{sampleScene.landmarks.length}</strong><span>Landmarks</span></div>
-            <div><strong>{sampleScene.routeGraph.edges.length}</strong><span>Connections</span></div>
+            <div><strong>{sampleScene.doors.length}</strong><span>Validated doors</span></div>
             <div><strong>{lowConfidence}</strong><span>Check needed</span></div>
           </div>
 

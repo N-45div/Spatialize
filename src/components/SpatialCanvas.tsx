@@ -17,6 +17,18 @@ function polygonShape(points: Point[]) {
   return shape;
 }
 
+function pointProjection(point: Point, start: Point, end: Point) {
+  const dx = end[0] - start[0];
+  const dz = end[1] - start[1];
+  const lengthSquared = dx ** 2 + dz ** 2;
+  const raw = lengthSquared === 0 ? 0 : ((point[0] - start[0]) * dx + (point[1] - start[1]) * dz) / lengthSquared;
+  const t = Math.max(0, Math.min(1, raw));
+  return {
+    t,
+    distance: Math.hypot(point[0] - (start[0] + t * dx), point[1] - (start[1] + t * dz))
+  };
+}
+
 export function SpatialCanvas({
   scene,
   route,
@@ -70,6 +82,7 @@ export function SpatialCanvas({
     plinth.receiveShadow = true;
     world.add(plinth);
 
+    const wallKeys = new Set<string>();
     scene.rooms.forEach((room) => {
       const geometry = new THREE.ExtrudeGeometry(polygonShape(room.polygon), {
         depth: room.category === "circulation" ? 0.12 : 0.2,
@@ -96,15 +109,55 @@ export function SpatialCanvas({
         const [ax, az] = points[index];
         const [bx, bz] = points[index + 1];
         const length = Math.hypot(bx - ax, bz - az);
-        const wall = new THREE.Mesh(
-          new THREE.BoxGeometry(length, 0.7, 0.09),
-          new THREE.MeshStandardMaterial({ color: 0xe6eadf, roughness: 0.6 })
-        );
-        wall.position.set((ax + bx) / 2, 0.45, (az + bz) / 2);
-        wall.rotation.y = -Math.atan2(bz - az, bx - ax);
-        wall.castShadow = true;
-        world.add(wall);
+        const startKey = `${ax.toFixed(3)},${az.toFixed(3)}`;
+        const endKey = `${bx.toFixed(3)},${bz.toFixed(3)}`;
+        const wallKey = [startKey, endKey].sort().join("|");
+        if (wallKeys.has(wallKey)) continue;
+        wallKeys.add(wallKey);
+
+        const cuts = scene.doors.flatMap((door) => {
+          const projection = pointProjection(door.position, [ax, az], [bx, bz]);
+          if (projection.distance > 0.08) return [];
+          const half = door.width / (2 * length);
+          return [{ start: Math.max(0, projection.t - half), end: Math.min(1, projection.t + half) }];
+        }).sort((a, b) => a.start - b.start);
+
+        const segments: { start: number; end: number }[] = [];
+        let cursor = 0;
+        cuts.forEach((cut) => {
+          if (cut.start > cursor) segments.push({ start: cursor, end: cut.start });
+          cursor = Math.max(cursor, cut.end);
+        });
+        if (cursor < 1) segments.push({ start: cursor, end: 1 });
+
+        segments.forEach((segment) => {
+          const segmentLength = length * (segment.end - segment.start);
+          if (segmentLength < 0.05) return;
+          const midpoint = (segment.start + segment.end) / 2;
+          const wall = new THREE.Mesh(
+            new THREE.BoxGeometry(segmentLength, 0.7, 0.09),
+            new THREE.MeshStandardMaterial({ color: 0xe6eadf, roughness: 0.6 })
+          );
+          wall.position.set(ax + (bx - ax) * midpoint, 0.45, az + (bz - az) * midpoint);
+          wall.rotation.y = -Math.atan2(bz - az, bx - ax);
+          wall.castShadow = true;
+          world.add(wall);
+        });
       }
+    });
+
+    scene.doors.forEach((door) => {
+      const threshold = new THREE.Mesh(
+        new THREE.BoxGeometry(door.width, 0.035, 0.24),
+        new THREE.MeshStandardMaterial({
+          color: door.confidence < 0.85 ? 0xffc95c : 0x8de6c1,
+          emissive: door.confidence < 0.85 ? 0x5c3500 : 0x0c3e2e,
+          emissiveIntensity: 0.55
+        })
+      );
+      threshold.position.set(door.position[0], 0.34, door.position[1]);
+      threshold.rotation.y = -door.rotation;
+      world.add(threshold);
     });
 
     const markerGroup = new THREE.Group();
