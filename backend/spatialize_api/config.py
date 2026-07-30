@@ -38,6 +38,11 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = Field(None, validation_alias="GEMINI_API_KEY")
     assemblyai_api_key: str | None = Field(None, validation_alias="ASSEMBLYAI_API_KEY")
+    openrouter_api_key: str | None = Field(None, validation_alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(
+        "openai/gpt-4o-mini",
+        validation_alias=AliasChoices("SPATIALIZE_OPENROUTER_MODEL", "openrouter_model"),
+    )
     gemini_agent_model: str = Field(
         "gemini-flash-latest",
         validation_alias=AliasChoices("SPATIALIZE_GEMINI_AGENT_MODEL", "gemini_agent_model"),
@@ -54,7 +59,7 @@ class Settings(BaseSettings):
         "Kore", validation_alias=AliasChoices("SPATIALIZE_TTS_VOICE", "tts_voice")
     )
     stt_model: str = Field(
-        "universal-3-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")
+        "universal-3-5-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")
     )
     stt_min_confidence: float = Field(
         0.5,

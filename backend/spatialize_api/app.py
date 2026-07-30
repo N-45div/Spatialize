@@ -42,7 +42,7 @@ class ApprovalRequest(BaseModel):
 
 
 def _default_extractor(settings: Settings) -> VisionExtractor:
-    if settings.gemini_api_key:
+    if settings.gemini_api_key or settings.openrouter_api_key:
         from .agents.extraction import GeminiVisionExtractor
 
         return GeminiVisionExtractor(settings)
@@ -50,7 +50,7 @@ def _default_extractor(settings: Settings) -> VisionExtractor:
 
 
 def _default_agent(settings: Settings) -> VoiceAgent:
-    if settings.gemini_api_key:
+    if settings.gemini_api_key or settings.openrouter_api_key:
         return GeminiVoiceAgent(settings)
     return DisabledVoiceAgent()
 
@@ -71,7 +71,9 @@ def create_app(
         active_settings.max_upload_bytes,
     )
     sink = build_genblaze_sink(active_settings)
-    active_transcriber = transcriber or build_transcriber(active_settings, sink)
+    # STT runs sink-less: transcript text assets aren't transferable objects;
+    # the app persists sources and transcripts to B2 through its own store.
+    active_transcriber = transcriber or build_transcriber(active_settings, None)
     active_narrator = narrator or build_narrator(active_settings, sink)
     active_agent = voice_agent or _default_agent(active_settings)
 
@@ -89,7 +91,7 @@ def create_app(
             "status": "ok",
             "storage": active_settings.storage_backend,
             "stt": bool(active_settings.assemblyai_api_key),
-            "agent": bool(active_settings.gemini_api_key),
+            "agent": bool(active_settings.gemini_api_key or active_settings.openrouter_api_key),
         }
 
     @app.post("/api/runs", response_model=RunRecord, status_code=status.HTTP_201_CREATED)
@@ -200,10 +202,11 @@ def create_app(
             else:
                 try:
                     transcript = active_transcriber.transcribe(audio_url, record.run_id)
-                except TranscriptUnavailable as error:
+                except Exception as error:  # includes TranscriptUnavailable
                     if not question:
                         raise HTTPException(
-                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail=f"Speech-to-text failed: {error}",
                         ) from error
                     warnings.append("stt-unavailable")
                 else:

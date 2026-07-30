@@ -82,6 +82,19 @@ class ExtractionFailed(ValueError):
     pass
 
 
+def _text_asset(step: Any, text: str) -> Any:
+    digest = hashlib.sha256(text.encode()).hexdigest()
+    step.assets.append(
+        Asset(
+            url=f"text:{digest}",
+            media_type="application/json",
+            sha256=digest,
+            metadata={"text": text},
+        )
+    )
+    return step
+
+
 class GeminiVisionStep(SyncProvider):
     name = "gemini-vision-extract"
 
@@ -106,17 +119,42 @@ class GeminiVisionStep(SyncProvider):
                 response_mime_type="application/json", temperature=0.1
             ),
         )
-        text = response.text or ""
-        digest = hashlib.sha256(text.encode()).hexdigest()
-        step.assets.append(
-            Asset(
-                url=f"text:{digest}",
-                media_type="application/json",
-                sha256=digest,
-                metadata={"text": text},
-            )
+        return _text_asset(step, response.text or "")
+
+
+class OpenRouterVisionStep(SyncProvider):
+    name = "openrouter-vision-extract"
+
+    def __init__(self, api_key: str, image: bytes, mime_type: str, **kwargs: Any):
+        super().__init__(**kwargs)
+        self._api_key = api_key
+        self._image = image
+        self._mime_type = mime_type
+
+    def generate(self, step: Any, config: Any = None) -> Any:
+        import base64
+
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self._api_key, base_url="https://openrouter.ai/api/v1")
+        data_uri = f"data:{self._mime_type};base64,{base64.b64encode(self._image).decode()}"
+        response = client.chat.completions.create(
+            model=step.model,
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": data_uri}},
+                        {"type": "text", "text": step.prompt},
+                    ],
+                }
+            ],
         )
-        return step
+        text = response.choices[0].message.content or ""
+        if text.startswith("```"):
+            text = text.strip("`").removeprefix("json").strip()
+        return _text_asset(step, text)
 
 
 def _candidate_from_result(result: Any, run_id: str, source: StoredAsset, model: str) -> dict:
@@ -163,7 +201,20 @@ class GeminiVisionExtractor:
 
     def _extract_sync(self, run_id: str, source: StoredAsset, content: bytes) -> dict[str, Any]:
         settings = self._settings
-        model = settings.gemini_vision_model
+        if settings.openrouter_api_key:
+            model = settings.openrouter_model
+
+            def make_step() -> SyncProvider:
+                return OpenRouterVisionStep(
+                    settings.openrouter_api_key or "", content, source.content_type
+                )
+        else:
+            model = settings.gemini_vision_model
+
+            def make_step() -> SyncProvider:
+                return GeminiVisionStep(
+                    settings.gemini_api_key or "", content, source.content_type
+                )
 
         def factory(ctx: AgentContext) -> Pipeline:
             prompt = EXTRACTION_PROMPT
@@ -173,7 +224,7 @@ class GeminiVisionExtractor:
                     f" errors — fix every one of them:\n{ctx.last_evaluation.feedback}"
                 )
             return Pipeline(f"extract-{run_id}-iter-{ctx.iteration}", project_id="spatialize").step(
-                GeminiVisionStep(settings.gemini_api_key or "", content, source.content_type),
+                make_step(),
                 model=model,
                 prompt=prompt,
                 modality=Modality.TEXT,

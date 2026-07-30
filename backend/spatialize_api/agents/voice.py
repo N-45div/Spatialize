@@ -141,31 +141,49 @@ def build_langchain_tools(session: SceneSession) -> list[Any]:
     ]
 
 
+def build_chat_model(settings: Settings) -> Any:
+    """OpenRouter (OpenAI-compatible) when configured, otherwise Gemini."""
+    if settings.openrouter_api_key:
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=settings.openrouter_model,
+            api_key=settings.openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0.2,
+            max_retries=4,
+        )
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    rate_limiter = None
+    if settings.gemini_requests_per_minute:
+        from langchain_core.rate_limiters import InMemoryRateLimiter
+
+        rate_limiter = InMemoryRateLimiter(
+            requests_per_second=settings.gemini_requests_per_minute / 60,
+            max_bucket_size=2,
+        )
+    return ChatGoogleGenerativeAI(
+        model=settings.gemini_agent_model,
+        google_api_key=settings.gemini_api_key,
+        temperature=0.2,
+        max_retries=4,
+        rate_limiter=rate_limiter,
+    )
+
+
 class GeminiVoiceAgent:
+    """Live voice agent; the underlying chat model comes from build_chat_model."""
+
     def __init__(self, settings: Settings):
         self._settings = settings
 
     def answer(self, session: SceneSession, question: str) -> str:
         from langchain_core.messages import HumanMessage
-        from langchain_google_genai import ChatGoogleGenerativeAI
         from langgraph.errors import GraphRecursionError
         from langgraph.prebuilt import create_react_agent
 
-        rate_limiter = None
-        if self._settings.gemini_requests_per_minute:
-            from langchain_core.rate_limiters import InMemoryRateLimiter
-
-            rate_limiter = InMemoryRateLimiter(
-                requests_per_second=self._settings.gemini_requests_per_minute / 60,
-                max_bucket_size=2,
-            )
-        model = ChatGoogleGenerativeAI(
-            model=self._settings.gemini_agent_model,
-            google_api_key=self._settings.gemini_api_key,
-            temperature=0.2,
-            max_retries=4,
-            rate_limiter=rate_limiter,
-        )
+        model = build_chat_model(self._settings)
         graph = create_react_agent(
             model, build_langchain_tools(session), prompt=SYSTEM_PROMPT
         )
