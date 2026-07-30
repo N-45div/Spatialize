@@ -258,6 +258,10 @@ def create_app(
             narration = active_narrator.narrate(script, record.run_id)
         except NarrationUnavailable:
             warnings.append("tts-unavailable")
+        except Exception:
+            # A narration failure must never take the answer down with it;
+            # the client falls back to captions + on-device speech.
+            warnings.append("tts-failed")
         else:
             url = narration.audio_url
             if narration.audio_bytes is not None:

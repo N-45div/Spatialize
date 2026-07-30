@@ -39,11 +39,11 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = Field(None, validation_alias="GEMINI_API_KEY")
     assemblyai_api_key: str | None = Field(None, validation_alias="ASSEMBLYAI_API_KEY")
     gemini_agent_model: str = Field(
-        "gemini-2.5-flash",
+        "gemini-flash-latest",
         validation_alias=AliasChoices("SPATIALIZE_GEMINI_AGENT_MODEL", "gemini_agent_model"),
     )
     gemini_vision_model: str = Field(
-        "gemini-2.5-pro",
+        "gemini-flash-latest",
         validation_alias=AliasChoices("SPATIALIZE_GEMINI_VISION_MODEL", "gemini_vision_model"),
     )
     gemini_tts_model: str = Field(
@@ -63,9 +63,14 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SPATIALIZE_STT_MIN_CONFIDENCE", "stt_min_confidence"),
     )
     agent_max_tool_rounds: int = Field(
-        6,
+        12,
         gt=0,
         validation_alias=AliasChoices("SPATIALIZE_AGENT_MAX_TOOL_ROUNDS", "agent_max_tool_rounds"),
+    )
+    gemini_requests_per_minute: int = Field(
+        4,
+        ge=0,
+        validation_alias=AliasChoices("SPATIALIZE_GEMINI_RPM", "gemini_requests_per_minute"),
     )
     extraction_max_iterations: int = Field(
         3,

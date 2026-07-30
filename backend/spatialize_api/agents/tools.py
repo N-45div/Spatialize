@@ -89,6 +89,21 @@ class SceneSession:
             "openReviewIssues": len(scene["review"]["issues"]),
         }
 
+    def list_doors(self) -> list[dict[str, Any]]:
+        rooms = self._rooms()
+        return [
+            {
+                "id": door["id"],
+                "label": door["label"],
+                "connects": [
+                    rooms[r]["label"] if r in rooms else r for r in door["connects"]
+                ],
+                "connectsRoomIds": list(door["connects"]),
+                "accessible": door["accessible"],
+            }
+            for door in self.scene["doors"]
+        ]
+
     def list_landmarks(self) -> list[dict[str, Any]]:
         return [
             {

@@ -120,7 +120,11 @@ class GeminiVisionStep(SyncProvider):
 
 
 def _candidate_from_result(result: Any, run_id: str, source: StoredAsset, model: str) -> dict:
-    raw = result.run.steps[-1].assets[0].metadata["text"]
+    step = result.run.steps[-1]
+    if not step.assets:
+        detail = getattr(step, "error", None) or "the vision step produced no output"
+        raise ExtractionFailed(f"Extraction step failed: {detail}")
+    raw = step.assets[0].metadata["text"]
     candidate = json.loads(raw)
     if candidate.get("error") == NOT_A_PLAN:
         raise ExtractionFailed("The uploaded file does not look like a floor plan")
@@ -179,8 +183,8 @@ class GeminiVisionExtractor:
             try:
                 candidate = _candidate_from_result(result, run_id, source, model)
                 SpatialScene.model_validate(candidate)
-            except ExtractionFailed:
-                raise
+            except ExtractionFailed as error:
+                return EvaluationResult(passed=False, score=0.0, feedback=str(error))
             except json.JSONDecodeError as error:
                 return EvaluationResult(
                     passed=False, score=0.0, feedback=f"Response was not valid JSON: {error}"
