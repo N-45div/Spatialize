@@ -6,6 +6,12 @@ requires-python = ">=3.11"
 dependencies = [
   "boto3>=1.40,<2",
   "fastapi>=0.116,<1",
+  "genblaze>=0.4,<1",
+  "genblaze-assemblyai>=0.3,<1",
+  "genblaze-google>=0.3,<1",
+  "google-genai>=1.30,<2",
+  "langchain-google-genai>=4.0,<5",
+  "langgraph>=1.0,<2",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<1",
   "uvicorn[standard]>=0.35,<1",

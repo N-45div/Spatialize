@@ -14,6 +14,7 @@ class ObjectStore(Protocol):
         self, key: str, data: bytes, content_type: str, metadata: dict[str, str] | None = None
     ) -> StoredAsset: ...
     def get(self, key: str) -> bytes: ...
+    def public_url(self, key: str) -> str | None: ...
 
 
 class LocalObjectStore:
@@ -58,6 +59,9 @@ class LocalObjectStore:
     def get(self, key: str) -> bytes:
         return self._path(key).read_bytes()
 
+    def public_url(self, key: str) -> str | None:
+        return None
+
 
 class B2ObjectStore:
     def __init__(self, settings: Settings):
@@ -100,6 +104,13 @@ class B2ObjectStore:
     def get(self, key: str) -> bytes:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         return response["Body"].read()
+
+    def public_url(self, key: str) -> str | None:
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=3600,
+        )
 
 
 def build_object_store(settings: Settings) -> ObjectStore:

@@ -36,6 +36,53 @@ class Settings(BaseSettings):
     b2_bucket: str | None = Field(None, validation_alias="B2_BUCKET")
     b2_region: str | None = Field(None, validation_alias="B2_REGION")
 
+    gemini_api_key: str | None = Field(None, validation_alias="GEMINI_API_KEY")
+    assemblyai_api_key: str | None = Field(None, validation_alias="ASSEMBLYAI_API_KEY")
+    gemini_agent_model: str = Field(
+        "gemini-2.5-flash",
+        validation_alias=AliasChoices("SPATIALIZE_GEMINI_AGENT_MODEL", "gemini_agent_model"),
+    )
+    gemini_vision_model: str = Field(
+        "gemini-2.5-pro",
+        validation_alias=AliasChoices("SPATIALIZE_GEMINI_VISION_MODEL", "gemini_vision_model"),
+    )
+    gemini_tts_model: str = Field(
+        "gemini-2.5-flash-preview-tts",
+        validation_alias=AliasChoices("SPATIALIZE_GEMINI_TTS_MODEL", "gemini_tts_model"),
+    )
+    tts_voice: str = Field(
+        "Kore", validation_alias=AliasChoices("SPATIALIZE_TTS_VOICE", "tts_voice")
+    )
+    stt_model: str = Field(
+        "universal-3-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")
+    )
+    stt_min_confidence: float = Field(
+        0.5,
+        ge=0,
+        le=1,
+        validation_alias=AliasChoices("SPATIALIZE_STT_MIN_CONFIDENCE", "stt_min_confidence"),
+    )
+    agent_max_tool_rounds: int = Field(
+        6,
+        gt=0,
+        validation_alias=AliasChoices("SPATIALIZE_AGENT_MAX_TOOL_ROUNDS", "agent_max_tool_rounds"),
+    )
+    extraction_max_iterations: int = Field(
+        3,
+        gt=0,
+        validation_alias=AliasChoices(
+            "SPATIALIZE_EXTRACTION_MAX_ITERATIONS", "extraction_max_iterations"
+        ),
+    )
+    max_voice_upload_bytes: int = Field(
+        8 * 1024 * 1024,
+        gt=0,
+        validation_alias=AliasChoices("SPATIALIZE_MAX_VOICE_UPLOAD_BYTES", "max_voice_upload_bytes"),
+    )
+    static_dir: Path | None = Field(
+        None, validation_alias=AliasChoices("SPATIALIZE_STATIC_DIR", "static_dir")
+    )
+
     @model_validator(mode="after")
     def require_b2_configuration(self) -> "Settings":
         if self.storage_backend == "b2":

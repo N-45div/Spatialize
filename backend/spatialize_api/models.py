@@ -273,4 +273,6 @@ class RunRecord(ApiModel):
     source: StoredAsset
     candidate_scene: StoredAsset | None = None
     approved_scene: StoredAsset | None = None
+    current_scene: StoredAsset | None = None
+    scene_version: int = 0
     error: str | None = None

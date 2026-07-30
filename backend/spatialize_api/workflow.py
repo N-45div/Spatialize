@@ -125,6 +125,12 @@ class RunService:
             record.updated_at = datetime.now(UTC)
             self._save_record(record)
             raise SceneRejected(str(error)) from error
+        except ValueError as error:
+            record.status = "failed"
+            record.error = str(error)
+            record.updated_at = datetime.now(UTC)
+            self._save_record(record)
+            raise SceneRejected(str(error)) from error
 
         scene_bytes = scene.model_dump_json(by_alias=True, indent=2).encode()
         prefix = self._prefix(record.run_id, record.created_at)
@@ -134,16 +140,41 @@ class RunService:
             "application/json",
             {"run-id": record.run_id, "artifact": "candidate-scene"},
         )
+        record.current_scene = record.candidate_scene
+        record.scene_version = 1
         record.status = "review-required"
         record.error = None
         record.updated_at = datetime.now(UTC)
         self._save_record(record)
         return record
 
+    def active_scene(self, record: RunRecord) -> SpatialScene:
+        asset = record.current_scene or record.approved_scene or record.candidate_scene
+        if not asset:
+            raise SceneRejected("Run has no extracted scene yet. Call extract first.")
+        return SpatialScene.model_validate_json(self.store.get(asset.key))
+
+    def save_scene_version(self, record: RunRecord, scene_data: dict) -> RunRecord:
+        scene = SpatialScene.model_validate(scene_data)
+        version = record.scene_version + 1
+        data = scene.model_dump_json(by_alias=True, indent=2).encode()
+        prefix = self._prefix(record.run_id, record.created_at)
+        record.current_scene = self.store.put(
+            f"{prefix}/scene/versions/v{version:04d}.json",
+            data,
+            "application/json",
+            {"run-id": record.run_id, "artifact": "scene-version", "version": str(version)},
+        )
+        record.scene_version = version
+        record.status = "review-required"
+        record.updated_at = datetime.now(UTC)
+        self._save_record(record)
+        return record
+
     def approve(self, record: RunRecord, resolved_issue_ids: set[str]) -> RunRecord:
-        if not record.candidate_scene:
+        if not (record.current_scene or record.candidate_scene):
             raise SceneRejected("Run has no candidate scene to approve")
-        scene = SpatialScene.model_validate_json(self.store.get(record.candidate_scene.key))
+        scene = self.active_scene(record)
         outstanding = {issue.id for issue in scene.review.issues} - resolved_issue_ids
         if outstanding:
             raise SceneRejected(f"Resolve review issues before approval: {', '.join(sorted(outstanding))}")
@@ -158,6 +189,7 @@ class RunService:
             "application/json",
             {"run-id": record.run_id, "artifact": "approved-scene"},
         )
+        record.current_scene = record.approved_scene
         record.status = "approved"
         record.updated_at = datetime.now(UTC)
         self._save_record(record)
