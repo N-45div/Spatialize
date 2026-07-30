@@ -2,7 +2,10 @@ import type { SpatialScene } from "../domain/spatial-scene";
 
 export function routeToLandmark(scene: SpatialScene, landmarkId: string) {
   const nodes = new Map(scene.routeGraph.nodes.map((node) => [node.id, node]));
-  const start = scene.routeGraph.nodes.find((node) => node.landmarkId === "entrance");
+  const entrance = scene.landmarks.find((item) => item.type === "entrance");
+  const start = scene.routeGraph.nodes.find(
+    (node) => node.landmarkId === entrance?.id || node.landmarkId === "entrance"
+  );
   const target = scene.routeGraph.nodes.find((node) => node.landmarkId === landmarkId);
   if (!start || !target) return [];
 

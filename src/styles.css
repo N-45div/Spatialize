@@ -413,6 +413,43 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 }
 .provenance-foot strong { color: #879b92; font-weight: 400; }
 
+.voice-panel { display: grid; gap: 9px; margin-bottom: 18px; }
+.voice-action {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel-raised); color: var(--ink); font-weight: 600;
+  font-size: 13px; cursor: pointer; transition: border-color .15s ease;
+}
+.voice-action:hover:not(:disabled) { border-color: var(--mint); }
+.voice-action:disabled { opacity: .45; cursor: not-allowed; }
+.voice-action.recording { border-color: var(--amber); color: var(--amber); }
+.voice-action.recording .audio-bars b { background: var(--amber); animation-play-state: running; }
+.ask-row { display: flex; gap: 7px; }
+.ask-row input {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  font: inherit; font-size: 12px;
+}
+.ask-row input::placeholder { color: var(--muted); }
+.ask-row button {
+  padding: 10px 14px; border-radius: 10px; border: 0; background: var(--mint);
+  color: #07100e; font-weight: 700; font-size: 12px; cursor: pointer;
+}
+.ask-row button:disabled { opacity: .4; cursor: not-allowed; }
+.mic-error { color: var(--amber); font-size: 11px; }
+.conversation {
+  border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px;
+  background: var(--panel-raised); display: grid; gap: 7px;
+}
+.conversation small { color: var(--muted); font-size: 11px; }
+.conversation p { margin: 0; font-size: 13px; line-height: 1.45; }
+.mutation-chip {
+  font-size: 11px; padding: 6px 9px; border-radius: 8px;
+  background: rgba(141, 230, 193, .12); color: var(--mint);
+}
+.mutation-chip b { text-transform: uppercase; font-size: 9px; letter-spacing: .06em; margin-right: 6px; }
+.manifest-note { color: var(--muted); font-family: monospace; }
+
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: 270px 1fr; }
   .inspector { display: none; }
