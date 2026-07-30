@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: spatialize
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: SPATIALIZE_STORAGE_BACKEND
+        value: b2
+      - key: B2_BUCKET
+        value: spatialize
+      - key: B2_REGION
+        value: us-east-005
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APP_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SPATIALIZE_OPENROUTER_MODEL
+        value: google/gemini-3.6-flash
+      - key: SPATIALIZE_STT_MODEL
+        value: universal-3-5-pro

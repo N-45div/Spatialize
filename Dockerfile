@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir /app/backend
 COPY --from=web /build/dist /app/static
 ENV SPATIALIZE_STATIC_DIR=/app/static
 EXPOSE 8787
-CMD ["uvicorn", "spatialize_api.app:app", "--host", "0.0.0.0", "--port", "8787"]
+CMD uvicorn spatialize_api.app:app --host 0.0.0.0 --port ${PORT:-8787}

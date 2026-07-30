@@ -1,0 +1,19 @@
+name: Keep the Render deploy warm
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        env:
+          APP_URL: ${{ vars.RENDER_APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "Set the RENDER_APP_URL repository variable to enable pings."
+            exit 0
+          fi
+          curl -fsS --max-time 30 "$APP_URL/health" && echo " — awake"
