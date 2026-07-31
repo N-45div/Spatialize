@@ -208,12 +208,14 @@ def create_app(
         return {"audio": payload, "warnings": warnings}
 
     @app.post("/api/runs/{run_id}/ask")
-    async def ask(
+    def ask(
         run_id: str,
         audio: Annotated[UploadFile | None, File()] = None,
         text: Annotated[str | None, Form()] = None,
         history: Annotated[str | None, Form()] = None,
     ) -> dict:
+        # Deliberately sync: FastAPI runs it in the threadpool, keeping the
+        # event loop (and /health) responsive during minutes-long asks.
         try:
             record = service.get_run(run_id)
             scene = service.active_scene(record)
@@ -227,7 +229,7 @@ def create_app(
         question = (text or "").strip()
 
         if audio is not None:
-            audio_bytes = await audio.read(active_settings.max_voice_upload_bytes + 1)
+            audio_bytes = audio.file.read(active_settings.max_voice_upload_bytes + 1)
             if len(audio_bytes) > active_settings.max_voice_upload_bytes:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
