@@ -277,9 +277,9 @@ export default function App() {
     }
     if (audioUrl) {
       setAskStage("speaking");
-      answerAudioRef.current?.pause();
-      const audio = new Audio(audioUrl);
+      const audio = answerAudioRef.current ?? new Audio();
       answerAudioRef.current = audio;
+      audio.src = audioUrl;
       audio.onended = () => setAskStage(null);
       void audio.play().catch(() => setAskStage(null));
     } else if (script && "speechSynthesis" in window) {
@@ -289,8 +289,20 @@ export default function App() {
     }
   }
 
+  function primeAnswerAudio() {
+    // Start a silent clip inside the user gesture so the browser lets the
+    // real answer audio play when it arrives ~30s later.
+    answerAudioRef.current?.pause();
+    const element = new Audio(
+      "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+    );
+    answerAudioRef.current = element;
+    void element.play().catch(() => undefined);
+  }
+
   async function submitAsk(input: { text?: string; audio?: Blob; audioType?: string }) {
     if (!ingestionRun) return;
+    if (!input.audio) primeAnswerAudio();
     setAsking(true);
     setAskStage(input.audio ? "transcribing" : "thinking");
     if (stageTimerRef.current) window.clearTimeout(stageTimerRef.current);
@@ -322,6 +334,7 @@ export default function App() {
   }
 
   async function toggleRecording() {
+    primeAnswerAudio();
     if (recording) {
       recorderRef.current?.stop();
       return;

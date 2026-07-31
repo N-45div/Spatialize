@@ -171,6 +171,11 @@ def create_app(
             warnings.append("tts-failed")
             return None
         url = narration.audio_url
+        # Sink URLs on a private bucket are unfetchable raw — re-sign them.
+        bucket = active_settings.b2_bucket
+        if url and bucket and f"/{bucket}/" in url and "?" not in url:
+            key = url.split(f"/{bucket}/", 1)[1]
+            url = active_store.public_url(key) or url
         if narration.audio_bytes is not None:
             answer_key = (
                 f"runs/public/{record.created_at.date().isoformat()}/{record.run_id}"
