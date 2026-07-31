@@ -10,8 +10,8 @@ const SourceRegionSchema = z.tuple([UnitInterval, UnitInterval, UnitInterval, Un
 export const ExtractionEvidenceSchema = z.object({
   confidence: UnitInterval,
   method: z.enum(["model", "human", "derived"]),
-  sourceRegion: SourceRegionSchema.optional(),
-  note: z.string().max(240).optional()
+  sourceRegion: SourceRegionSchema.nullish(),
+  note: z.string().max(240).nullish()
 });
 
 const EntityEvidenceSchema = z.object({
@@ -58,7 +58,7 @@ export const RouteNodeSchema = z.object({
   id: z.string(),
   position: PointSchema,
   roomId: z.string(),
-  landmarkId: z.string().optional()
+  landmarkId: z.string().nullish()
 });
 
 export const RouteEdgeSchema = z.object({
@@ -66,7 +66,7 @@ export const RouteEdgeSchema = z.object({
   to: z.string(),
   distance: z.number().positive(),
   accessible: z.boolean(),
-  doorId: z.string().optional()
+  doorId: z.string().nullish()
 });
 
 const SpatialSceneObjectSchema = z.object({
