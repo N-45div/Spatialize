@@ -102,7 +102,10 @@ class B2ObjectStore:
         )
 
     def get(self, key: str) -> bytes:
-        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        except self.client.exceptions.NoSuchKey as error:
+            raise FileNotFoundError(key) from error
         return response["Body"].read()
 
     def public_url(self, key: str) -> str | None:
