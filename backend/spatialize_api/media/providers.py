@@ -78,6 +78,51 @@ class KokoroTTSProvider(SyncProvider):
         return step
 
 
+class SarvamTTSProvider(SyncProvider):
+    """Sarvam AI Bulbul TTS — a lightweight API tier for narration fallback."""
+
+    name = "sarvam-tts"
+
+    def __init__(self, api_key: str, voice: str = "ritu", **kwargs: Any):
+        super().__init__(**kwargs)
+        self._api_key = api_key
+        self._voice = voice
+
+    def generate(self, step: Any, config: Any = None) -> Any:
+        import base64
+        import json as jsonlib
+        import urllib.request
+
+        request = urllib.request.Request(
+            "https://api.sarvam.ai/text-to-speech",
+            data=jsonlib.dumps(
+                {
+                    "text": step.prompt[:2400],
+                    "model": step.model,
+                    "speaker": self._voice,
+                    "target_language_code": "en-IN",
+                    "speech_sample_rate": PCM_SAMPLE_RATE,
+                }
+            ).encode(),
+            headers={
+                "api-subscription-key": self._api_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = jsonlib.loads(response.read())
+        wav = base64.b64decode(payload["audios"][0])
+        duration = max(0.0, (len(wav) - 44)) / (PCM_SAMPLE_RATE * PCM_SAMPLE_WIDTH)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            handle.write(wav)
+            file_url = Path(handle.name).resolve().as_uri()
+        step.assets.append(
+            Asset(url=file_url, media_type="audio/wav", duration=duration)
+        )
+        return step
+
+
 class GeminiTTSProvider(SyncProvider):
     name = "gemini-tts"
 

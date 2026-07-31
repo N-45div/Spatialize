@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     kokoro_voice: str = Field(
         "af_heart", validation_alias=AliasChoices("SPATIALIZE_KOKORO_VOICE", "kokoro_voice")
     )
+    sarvam_api_key: str | None = Field(None, validation_alias="SARVAM_API_KEY")
+    sarvam_voice: str = Field(
+        "ritu", validation_alias=AliasChoices("SPATIALIZE_SARVAM_VOICE", "sarvam_voice")
+    )
     stt_model: str = Field(
         "universal-3-5-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")
     )

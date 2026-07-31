@@ -149,6 +149,32 @@ class GenblazeNarrator:
         )
 
 
+class SarvamNarrator:
+    """Sarvam Bulbul narration — API-based fallback with no memory footprint."""
+
+    def __init__(self, settings: Settings, sink: ObjectStorageSink | None):
+        self._settings = settings
+        self._sink = sink
+
+    def narrate(self, script: str, run_id: str, parent=None) -> Narration:
+        from .providers import SarvamTTSProvider
+
+        provider = SarvamTTSProvider(
+            self._settings.sarvam_api_key or "", voice=self._settings.sarvam_voice
+        )
+        return run_tts_pipeline(
+            provider,
+            model="bulbul:v3",
+            prompt=script,
+            script=script,
+            run_id=run_id,
+            sink=self._sink,
+            parent=parent,
+            provider_name="sarvam-tts",
+            voice_label=f"{self._settings.sarvam_voice} · Sarvam Bulbul v3",
+        )
+
+
 class KokoroNarrator:
     """Open-source narration (Kokoro-82M) — local, unlimited, still manifested."""
 
@@ -255,6 +281,8 @@ def build_narrator(settings: Settings, sink: ObjectStorageSink | None) -> Narrat
     tiers: list[Narrator] = []
     if settings.gemini_api_key:
         tiers.append(GenblazeNarrator(settings, sink))
+    if settings.sarvam_api_key:
+        tiers.append(SarvamNarrator(settings, sink))
     if _kokoro_available(settings):
         tiers.append(KokoroNarrator(settings, sink))
     if not tiers:
