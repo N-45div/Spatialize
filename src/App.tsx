@@ -467,7 +467,7 @@ export default function App() {
                   <>
                     <audio className="answer-audio" controls src={conversation.audioUrl} />
                     <small className="voice-provenance">
-                      ● Gemini voice “{conversation.voice ?? "Sulafat"}” · genblaze manifest{" "}
+                      ● {conversation.voice ?? "Generated voice"} · genblaze manifest{" "}
                       {conversation.manifestHash?.slice(0, 10)}…
                     </small>
                   </>

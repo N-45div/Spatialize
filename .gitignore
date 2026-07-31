@@ -3,6 +3,7 @@ dist
 .venv
 backend/.venv
 backend/.local-data
+backend/.models
 __pycache__/
 .pytest_cache/
 .env

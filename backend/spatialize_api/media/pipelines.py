@@ -54,6 +54,7 @@ class Narration:
     manifest_hash: str
     duration: float | None = None
     provider: str = "gemini-tts"
+    voice_label: str = ""
     warnings: list[str] = field(default_factory=list)
 
 
@@ -134,36 +135,114 @@ class GenblazeNarrator:
             api_key=self._settings.gemini_api_key or "",
             voice=self._settings.tts_voice,
         )
-        pipeline = Pipeline(f"route-narration-{run_id}", project_id="spatialize")
-        if parent is not None:
-            pipeline = pipeline.from_result(parent)
         styled = f"{self._settings.tts_style}: {script}" if self._settings.tts_style else script
-        result = pipeline.step(
+        return run_tts_pipeline(
             provider,
             model=self._settings.gemini_tts_model,
             prompt=styled,
-            modality=Modality.AUDIO,
-        ).run(sink=self._sink, timeout=120, raise_on_failure=True)
-
-        asset = result.run.steps[0].assets[0]
-        audio_bytes: bytes | None = None
-        audio_url: str | None = None
-        parsed = urlparse(asset.url)
-        if parsed.scheme == "file":
-            path = Path(url2pathname(parsed.path))
-            audio_bytes = path.read_bytes()
-            path.unlink(missing_ok=True)
-        else:
-            audio_url = asset.url
-        return Narration(
             script=script,
-            audio_bytes=audio_bytes,
-            audio_url=audio_url,
-            media_type=asset.media_type or "audio/wav",
-            run_id=result.run.run_id,
-            manifest_hash=result.manifest.canonical_hash,
-            duration=asset.duration,
+            run_id=run_id,
+            sink=self._sink,
+            parent=parent,
+            provider_name="gemini-tts",
+            voice_label=f"{self._settings.tts_voice} · Gemini TTS",
         )
+
+
+class KokoroNarrator:
+    """Open-source narration (Kokoro-82M) — local, unlimited, still manifested."""
+
+    def __init__(self, settings: Settings, sink: ObjectStorageSink | None):
+        self._settings = settings
+        self._sink = sink
+
+    def narrate(self, script: str, run_id: str, parent=None) -> Narration:
+        from .providers import KokoroTTSProvider
+
+        provider = KokoroTTSProvider(
+            self._settings.kokoro_model_dir, voice=self._settings.kokoro_voice
+        )
+        return run_tts_pipeline(
+            provider,
+            model="kokoro-82m-int8",
+            prompt=script,
+            script=script,
+            run_id=run_id,
+            sink=self._sink,
+            parent=parent,
+            provider_name="kokoro-tts",
+            voice_label=f"{self._settings.kokoro_voice} · Kokoro-82M (open source)",
+        )
+
+
+class ChainNarrator:
+    """Tries each narrator in order; the first success wins."""
+
+    def __init__(self, narrators: list[Narrator]):
+        self._narrators = narrators
+
+    def narrate(self, script: str, run_id: str, parent=None) -> Narration:
+        last_error: Exception | None = None
+        for narrator in self._narrators:
+            try:
+                return narrator.narrate(script, run_id, parent)
+            except Exception as error:
+                last_error = error
+        raise NarrationUnavailable(str(last_error) if last_error else "No narrator configured")
+
+
+def run_tts_pipeline(
+    provider,
+    *,
+    model: str,
+    prompt: str,
+    script: str,
+    run_id: str,
+    sink: ObjectStorageSink | None,
+    parent,
+    provider_name: str,
+    voice_label: str,
+) -> Narration:
+    pipeline = Pipeline(f"route-narration-{run_id}", project_id="spatialize")
+    if parent is not None:
+        pipeline = pipeline.from_result(parent)
+    result = pipeline.step(
+        provider,
+        model=model,
+        prompt=prompt,
+        modality=Modality.AUDIO,
+    ).run(sink=sink, timeout=120, raise_on_failure=True)
+
+    asset = result.run.steps[0].assets[0]
+    audio_bytes: bytes | None = None
+    audio_url: str | None = None
+    parsed = urlparse(asset.url)
+    if parsed.scheme == "file":
+        path = Path(url2pathname(parsed.path))
+        audio_bytes = path.read_bytes()
+        path.unlink(missing_ok=True)
+    else:
+        audio_url = asset.url
+    return Narration(
+        script=script,
+        audio_bytes=audio_bytes,
+        audio_url=audio_url,
+        media_type=asset.media_type or "audio/wav",
+        run_id=result.run.run_id,
+        manifest_hash=result.manifest.canonical_hash,
+        duration=asset.duration,
+        provider=provider_name,
+        voice_label=voice_label,
+    )
+
+
+def _kokoro_available(settings: Settings) -> bool:
+    directory = settings.kokoro_model_dir
+    return bool(
+        directory
+        and (directory / "kokoro-v1.0.int8.onnx").is_file()
+        and (directory / "voices-v1.0.bin").is_file()
+    )
 
 
 def build_transcriber(settings: Settings, sink: ObjectStorageSink | None) -> Transcriber:
@@ -173,6 +252,11 @@ def build_transcriber(settings: Settings, sink: ObjectStorageSink | None) -> Tra
 
 
 def build_narrator(settings: Settings, sink: ObjectStorageSink | None) -> Narrator:
+    tiers: list[Narrator] = []
     if settings.gemini_api_key:
-        return GenblazeNarrator(settings, sink)
-    return DisabledNarrator()
+        tiers.append(GenblazeNarrator(settings, sink))
+    if _kokoro_available(settings):
+        tiers.append(KokoroNarrator(settings, sink))
+    if not tiers:
+        return DisabledNarrator()
+    return ChainNarrator(tiers)

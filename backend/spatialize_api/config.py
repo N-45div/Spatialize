@@ -62,6 +62,13 @@ class Settings(BaseSettings):
         "Speak as a warm, friendly venue guide — natural, unhurried, and clear",
         validation_alias=AliasChoices("SPATIALIZE_TTS_STYLE", "tts_style"),
     )
+    kokoro_model_dir: Path | None = Field(
+        BACKEND_ROOT / ".models",
+        validation_alias=AliasChoices("SPATIALIZE_KOKORO_MODEL_DIR", "kokoro_model_dir"),
+    )
+    kokoro_voice: str = Field(
+        "af_heart", validation_alias=AliasChoices("SPATIALIZE_KOKORO_VOICE", "kokoro_voice")
+    )
     stt_model: str = Field(
         "universal-3-5-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")
     )

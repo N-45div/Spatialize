@@ -10,6 +10,7 @@ dependencies = [
   "genblaze-assemblyai>=0.3,<1",
   "genblaze-google>=0.3,<1",
   "google-genai>=1.30,<2",
+  "kokoro-onnx>=0.5,<1",
   "langchain-google-genai>=4.0,<5",
   "langchain-openai>=1.0,<2",
   "langgraph>=1.0,<2",

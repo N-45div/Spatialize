@@ -32,6 +32,52 @@ def pcm_to_wav_bytes(pcm: bytes) -> bytes:
     return data
 
 
+class KokoroTTSProvider(SyncProvider):
+    """Self-hosted open-source TTS (Kokoro-82M, Apache 2.0) as a genblaze provider.
+
+    No API, no key, no quota — synthesis happens in-process on CPU, and the
+    output still carries a genblaze provenance manifest like any other step.
+    """
+
+    name = "kokoro-tts"
+    _engine: Any = None
+
+    def __init__(self, model_dir: Path, voice: str = "af_heart", **kwargs: Any):
+        super().__init__(**kwargs)
+        self._model_dir = model_dir
+        self._voice = voice
+
+    def _get_engine(self) -> Any:
+        if KokoroTTSProvider._engine is None:
+            from kokoro_onnx import Kokoro
+
+            KokoroTTSProvider._engine = Kokoro(
+                str(self._model_dir / "kokoro-v1.0.int8.onnx"),
+                str(self._model_dir / "voices-v1.0.bin"),
+            )
+        return KokoroTTSProvider._engine
+
+    def generate(self, step: Any, config: Any = None) -> Any:
+        import numpy as np
+
+        samples, sample_rate = self._get_engine().create(
+            step.prompt, voice=self._voice, speed=1.0
+        )
+        pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
+        wav = pcm_to_wav_bytes(pcm)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            handle.write(wav)
+            file_url = Path(handle.name).resolve().as_uri()
+        step.assets.append(
+            Asset(
+                url=file_url,
+                media_type="audio/wav",
+                duration=len(samples) / sample_rate,
+            )
+        )
+        return step
+
+
 class GeminiTTSProvider(SyncProvider):
     name = "gemini-tts"
 

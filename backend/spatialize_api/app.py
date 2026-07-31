@@ -189,7 +189,7 @@ def create_app(
             "durationSeconds": narration.duration,
             "manifestHash": narration.manifest_hash,
             "genblazeRunId": narration.run_id,
-            "voice": active_settings.tts_voice,
+            "voice": narration.voice_label or active_settings.tts_voice,
         }
 
     @app.post("/api/runs/{run_id}/narrate")
