@@ -1,3 +1,4 @@
+import json
 import mimetypes
 from dataclasses import asdict
 from typing import Annotated
@@ -5,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .agents.tools import SceneSession
 from .agents.voice import AgentUnavailable, DisabledVoiceAgent, GeminiVoiceAgent, VoiceAgent
@@ -39,6 +40,10 @@ AUDIO_EXTENSIONS = {
 
 class ApprovalRequest(BaseModel):
     resolved_issue_ids: set[str]
+
+
+class NarrateRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
 
 
 def _default_extractor(settings: Settings) -> VisionExtractor:
@@ -154,11 +159,60 @@ def create_app(
         except (KeyError, ValueError) as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found") from error
 
+    def narration_payload(record: RunRecord, script: str, warnings: list[str]) -> dict | None:
+        try:
+            narration = active_narrator.narrate(script, record.run_id)
+        except NarrationUnavailable:
+            warnings.append("tts-unavailable")
+            return None
+        except Exception:
+            # A narration failure must never take the answer down with it;
+            # the client falls back to captions + on-device speech.
+            warnings.append("tts-failed")
+            return None
+        url = narration.audio_url
+        if narration.audio_bytes is not None:
+            answer_key = (
+                f"runs/public/{record.created_at.date().isoformat()}/{record.run_id}"
+                f"/voice/answers/{uuid4().hex[:10]}.wav"
+            )
+            active_store.put(
+                answer_key,
+                narration.audio_bytes,
+                narration.media_type,
+                {"run-id": record.run_id, "artifact": "voice-answer"},
+            )
+            url = active_store.public_url(answer_key) or f"/api/assets/{answer_key}"
+        return {
+            "url": url,
+            "mediaType": narration.media_type,
+            "durationSeconds": narration.duration,
+            "manifestHash": narration.manifest_hash,
+            "genblazeRunId": narration.run_id,
+            "voice": active_settings.tts_voice,
+        }
+
+    @app.post("/api/runs/{run_id}/narrate")
+    def narrate(run_id: str, request: NarrateRequest) -> dict:
+        try:
+            record = service.get_run(run_id)
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found") from error
+        warnings: list[str] = []
+        payload = narration_payload(record, request.text, warnings)
+        if payload is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Narration is unavailable right now",
+            )
+        return {"audio": payload, "warnings": warnings}
+
     @app.post("/api/runs/{run_id}/ask")
     async def ask(
         run_id: str,
         audio: Annotated[UploadFile | None, File()] = None,
         text: Annotated[str | None, Form()] = None,
+        history: Annotated[str | None, Form()] = None,
     ) -> dict:
         try:
             record = service.get_run(run_id)
@@ -242,11 +296,20 @@ def create_app(
                 detail="Provide a voice recording or a text question",
             )
 
+        parsed_history: list[dict] | None = None
+        if history:
+            try:
+                candidate_history = json.loads(history)
+                if isinstance(candidate_history, list):
+                    parsed_history = [t for t in candidate_history if isinstance(t, dict)][:6]
+            except json.JSONDecodeError:
+                warnings.append("history-ignored")
+
         session = SceneSession(
             scene=scene.model_dump(by_alias=True, mode="json"), spoken_quote=question
         )
         try:
-            script = active_agent.answer(session, question)
+            script = active_agent.answer(session, question, history=parsed_history)
         except AgentUnavailable as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
@@ -260,36 +323,7 @@ def create_app(
             except Exception:
                 warnings.append("scene-version-not-saved")
 
-        audio_payload: dict | None = None
-        try:
-            narration = active_narrator.narrate(script, record.run_id)
-        except NarrationUnavailable:
-            warnings.append("tts-unavailable")
-        except Exception:
-            # A narration failure must never take the answer down with it;
-            # the client falls back to captions + on-device speech.
-            warnings.append("tts-failed")
-        else:
-            url = narration.audio_url
-            if narration.audio_bytes is not None:
-                answer_key = (
-                    f"runs/public/{record.created_at.date().isoformat()}/{record.run_id}"
-                    f"/voice/answers/{uuid4().hex[:10]}.wav"
-                )
-                active_store.put(
-                    answer_key,
-                    narration.audio_bytes,
-                    narration.media_type,
-                    {"run-id": record.run_id, "artifact": "voice-answer"},
-                )
-                url = active_store.public_url(answer_key) or f"/api/assets/{answer_key}"
-            audio_payload = {
-                "url": url,
-                "mediaType": narration.media_type,
-                "durationSeconds": narration.duration,
-                "manifestHash": narration.manifest_hash,
-                "genblazeRunId": narration.run_id,
-            }
+        audio_payload = narration_payload(record, script, warnings)
 
         return {
             "status": "ok",

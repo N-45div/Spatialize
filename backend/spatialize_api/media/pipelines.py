@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -121,6 +122,14 @@ class GenblazeNarrator:
         self._sink = sink
 
     def narrate(self, script: str, run_id: str, parent=None) -> Narration:
+        try:
+            return self._narrate_once(script, run_id, parent)
+        except Exception:
+            # TTS previews throw transient 500s/429s; one retry rescues most.
+            time.sleep(2)
+            return self._narrate_once(script, run_id, parent)
+
+    def _narrate_once(self, script: str, run_id: str, parent=None) -> Narration:
         provider = GeminiTTSProvider(
             api_key=self._settings.gemini_api_key or "",
             voice=self._settings.tts_voice,
@@ -128,10 +137,11 @@ class GenblazeNarrator:
         pipeline = Pipeline(f"route-narration-{run_id}", project_id="spatialize")
         if parent is not None:
             pipeline = pipeline.from_result(parent)
+        styled = f"{self._settings.tts_style}: {script}" if self._settings.tts_style else script
         result = pipeline.step(
             provider,
             model=self._settings.gemini_tts_model,
-            prompt=script,
+            prompt=styled,
             modality=Modality.AUDIO,
         ).run(sink=self._sink, timeout=120, raise_on_failure=True)
 

@@ -1,5 +1,6 @@
 """Voice pipeline tests: scene tools, the mutation gate, and the /ask endpoint."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +96,13 @@ class FakeTranscriber:
 
 
 class MutatingFakeAgent:
-    def answer(self, scene_session: SceneSession, question: str) -> str:
+    def __init__(self) -> None:
+        self.last_history: list[dict] | None = None
+
+    def answer(
+        self, scene_session: SceneSession, question: str, history: list[dict] | None = None
+    ) -> str:
+        self.last_history = history
         scene_session.add_landmark("Cafe", "destination", room_id="gallery")
         return "I added the cafe to the gallery. It is marked for review."
 
@@ -157,6 +164,35 @@ def test_ask_with_text_mutates_scene_and_returns_audio(tmp_path: Path) -> None:
         audio = client.get(body["audio"]["url"])
         assert audio.status_code == 200
         assert audio.content == b"RIFFfakewav"
+
+
+def test_ask_passes_history_and_narrate_endpoint_works(tmp_path: Path) -> None:
+    agent = MutatingFakeAgent()
+    settings = Settings(
+        storage_backend="local", local_data_dir=tmp_path, max_upload_bytes=1024
+    )
+    with TestClient(
+        create_app(
+            settings=settings,
+            extractor=FixtureExtractor(),
+            narrator=FakeNarrator(),
+            voice_agent=agent,
+        )
+    ) as client:
+        run = extracted_run(client)
+        turns = [{"question": "where is the gallery?", "answer": "8 metres ahead."}]
+        response = client.post(
+            f"/api/runs/{run['runId']}/ask",
+            data={"text": "and from there?", "history": json.dumps(turns)},
+        )
+        assert response.status_code == 200
+        assert agent.last_history == turns
+
+        narrated = client.post(
+            f"/api/runs/{run['runId']}/narrate", json={"text": "Route to the gallery."}
+        )
+        assert narrated.status_code == 200
+        assert narrated.json()["audio"]["manifestHash"] == "hash-tts"
 
 
 def test_ask_without_scene_returns_conflict(tmp_path: Path) -> None:

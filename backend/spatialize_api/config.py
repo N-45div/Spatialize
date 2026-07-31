@@ -56,7 +56,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SPATIALIZE_GEMINI_TTS_MODEL", "gemini_tts_model"),
     )
     tts_voice: str = Field(
-        "Kore", validation_alias=AliasChoices("SPATIALIZE_TTS_VOICE", "tts_voice")
+        "Sulafat", validation_alias=AliasChoices("SPATIALIZE_TTS_VOICE", "tts_voice")
+    )
+    tts_style: str = Field(
+        "Speak as a warm, friendly venue guide — natural, unhurried, and clear",
+        validation_alias=AliasChoices("SPATIALIZE_TTS_STYLE", "tts_style"),
     )
     stt_model: str = Field(
         "universal-3-5-pro", validation_alias=AliasChoices("SPATIALIZE_STT_MODEL", "stt_model")

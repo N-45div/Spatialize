@@ -34,11 +34,15 @@ class AgentUnavailable(RuntimeError):
 
 
 class VoiceAgent(Protocol):
-    def answer(self, session: SceneSession, question: str) -> str: ...
+    def answer(
+        self, session: SceneSession, question: str, history: list[dict] | None = None
+    ) -> str: ...
 
 
 class DisabledVoiceAgent:
-    def answer(self, session: SceneSession, question: str) -> str:
+    def answer(
+        self, session: SceneSession, question: str, history: list[dict] | None = None
+    ) -> str:
         raise AgentUnavailable(
             "The voice agent is not configured. Set GEMINI_API_KEY to enable it."
         )
@@ -178,8 +182,10 @@ class GeminiVoiceAgent:
     def __init__(self, settings: Settings):
         self._settings = settings
 
-    def answer(self, session: SceneSession, question: str) -> str:
-        from langchain_core.messages import HumanMessage
+    def answer(
+        self, session: SceneSession, question: str, history: list[dict] | None = None
+    ) -> str:
+        from langchain_core.messages import AIMessage, HumanMessage
         from langgraph.errors import GraphRecursionError
         from langgraph.prebuilt import create_react_agent
 
@@ -187,11 +193,18 @@ class GeminiVoiceAgent:
         graph = create_react_agent(
             model, build_langchain_tools(session), prompt=SYSTEM_PROMPT
         )
+        messages: list = []
+        for turn in (history or [])[-4:]:
+            if turn.get("question"):
+                messages.append(HumanMessage(content=str(turn["question"])[:500]))
+            if turn.get("answer"):
+                messages.append(AIMessage(content=str(turn["answer"])[:500]))
+        messages.append(HumanMessage(content=question))
         # Each tool round is a model step plus a tool step.
         limit = 2 * self._settings.agent_max_tool_rounds + 1
         try:
             state = graph.invoke(
-                {"messages": [HumanMessage(content=question)]},
+                {"messages": messages},
                 config={"recursion_limit": limit},
             )
         except ToolError as error:
