@@ -11,8 +11,10 @@ import {
   extractRun,
   fetchRun,
   fetchScene,
+  narrateText,
   resolveAssetUrl,
   type AskResponse,
+  type ConversationTurn,
   type IngestionRun
 } from "./lib/api";
 
@@ -24,10 +26,14 @@ type Conversation = {
   question: string;
   answer: string;
   audioUrl: string | null;
+  audioKind: "generated" | "fallback" | "none";
+  voice?: string;
   mutations: { kind: string; summary: string }[];
   warnings: string[];
   manifestHash?: string;
 };
+
+type AskStage = null | "transcribing" | "thinking" | "speaking";
 
 function parseScene(raw: unknown): SpatialScene | null {
   const parsed = SpatialSceneSchema.safeParse(raw);
@@ -58,6 +64,9 @@ export default function App() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [demoNotice, setDemoNotice] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [askStage, setAskStage] = useState<AskStage>(null);
+  const historyRef = useRef<ConversationTurn[]>([]);
+  const stageTimerRef = useRef<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -150,19 +159,42 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
-  function narrateRoute() {
-    if (!selected || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
+  async function narrateRoute() {
+    if (!selected) return;
+    const script =
+      `Route to ${selected.label}. Travel ${Math.round(routeDistance)} metres from the main ` +
+      "entrance. The accessible route is highlighted in amber.";
     if (isSpeaking) {
+      window.speechSynthesis?.cancel();
+      answerAudioRef.current?.pause();
       setIsSpeaking(false);
       return;
     }
-    const narration = new SpeechSynthesisUtterance(
-      `Route to ${selected.label}. Travel ${Math.round(routeDistance)} metres from the main entrance. The accessible route is highlighted in amber.`
-    );
+    setIsSpeaking(true);
+    if (ingestionRun) {
+      try {
+        const { audio } = await narrateText(ingestionRun.runId, script);
+        const url = resolveAssetUrl(audio.url);
+        if (url) {
+          answerAudioRef.current?.pause();
+          const element = new Audio(url);
+          answerAudioRef.current = element;
+          element.onended = () => setIsSpeaking(false);
+          await element.play();
+          return;
+        }
+      } catch {
+        /* fall through to on-device speech */
+      }
+    }
+    if (!("speechSynthesis" in window)) {
+      setIsSpeaking(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const narration = new SpeechSynthesisUtterance(script);
     narration.rate = 0.92;
     narration.onend = () => setIsSpeaking(false);
-    setIsSpeaking(true);
     window.speechSynthesis.speak(narration);
   }
 
@@ -181,6 +213,8 @@ export default function App() {
       const run = await createIngestionRun(file);
       setIngestionRun(run);
       setDemoNotice(false);
+      historyRef.current = [];
+      setConversation(null);
       localStorage.setItem(RUN_STORAGE_KEY, run.runId);
       setUploadState("stored");
       setUploadMessage(`${(run.source.size / 1024).toFixed(1)} KB · SHA ${run.source.sha256.slice(0, 8)}`);
@@ -212,30 +246,38 @@ export default function App() {
         question,
         answer: response.message ?? "Please repeat the question.",
         audioUrl: null,
+        audioKind: "none",
         mutations: [],
         warnings: response.warnings
       });
       return;
     }
+    const asked = response.question ?? question;
+    const script = response.answer?.script ?? "";
     const audioUrl = resolveAssetUrl(response.audio?.url);
     setConversation({
-      question: response.question ?? question,
-      answer: response.answer?.script ?? "",
+      question: asked,
+      answer: script,
       audioUrl,
+      audioKind: audioUrl ? "generated" : script ? "fallback" : "none",
+      voice: response.audio?.voice,
       mutations: response.mutations.map(({ kind, summary }) => ({ kind, summary })),
       warnings: response.warnings,
       manifestHash: response.audio?.manifestHash
     });
+    if (script) historyRef.current = [...historyRef.current.slice(-5), { question: asked, answer: script }];
     if (response.sceneChanged && ingestionRun) {
       void reloadScene(ingestionRun.runId);
     }
     if (audioUrl) {
+      setAskStage("speaking");
       answerAudioRef.current?.pause();
       const audio = new Audio(audioUrl);
       answerAudioRef.current = audio;
-      void audio.play().catch(() => undefined);
-    } else if (response.answer?.script && "speechSynthesis" in window) {
-      const fallback = new SpeechSynthesisUtterance(response.answer.script);
+      audio.onended = () => setAskStage(null);
+      void audio.play().catch(() => setAskStage(null));
+    } else if (script && "speechSynthesis" in window) {
+      const fallback = new SpeechSynthesisUtterance(script);
       fallback.rate = 0.95;
       window.speechSynthesis.speak(fallback);
     }
@@ -244,9 +286,17 @@ export default function App() {
   async function submitAsk(input: { text?: string; audio?: Blob; audioType?: string }) {
     if (!ingestionRun) return;
     setAsking(true);
+    setAskStage(input.audio ? "transcribing" : "thinking");
+    if (stageTimerRef.current) window.clearTimeout(stageTimerRef.current);
+    if (input.audio) {
+      stageTimerRef.current = window.setTimeout(() => setAskStage("thinking"), 9000);
+    }
     try {
       const question = input.text ?? "(voice question)";
-      const response = await askVenue(ingestionRun.runId, input);
+      const response = await askVenue(ingestionRun.runId, {
+        ...input,
+        history: historyRef.current
+      });
       applyAskResponse(question, response);
       setAskText("");
     } catch (error) {
@@ -254,11 +304,14 @@ export default function App() {
         question: input.text ?? "(voice question)",
         answer: error instanceof Error ? error.message : "The venue could not answer.",
         audioUrl: null,
+        audioKind: "none",
         mutations: [],
         warnings: ["request-failed"]
       });
     } finally {
+      if (stageTimerRef.current) window.clearTimeout(stageTimerRef.current);
       setAsking(false);
+      setAskStage((stage) => (stage === "speaking" ? stage : null));
     }
   }
 
@@ -398,20 +451,37 @@ export default function App() {
               </button>
             </div>
             {micError && <small className="mic-error">{micError}</small>}
+            {askStage && (
+              <div className="ask-status" aria-live="polite">
+                <i className="audio-bars"><b /><b /><b /></i>
+                {askStage === "transcribing" && "Transcribing your voice (AssemblyAI)…"}
+                {askStage === "thinking" && "Thinking over the validated scene…"}
+                {askStage === "speaking" && "Speaking (Gemini voice)…"}
+              </div>
+            )}
             {conversation && (
               <div className="conversation" aria-live="polite">
                 <small>You: {conversation.question}</small>
                 <p>{conversation.answer}</p>
+                {conversation.audioKind === "generated" && conversation.audioUrl && (
+                  <>
+                    <audio className="answer-audio" controls src={conversation.audioUrl} />
+                    <small className="voice-provenance">
+                      ● Gemini voice “{conversation.voice ?? "Sulafat"}” · genblaze manifest{" "}
+                      {conversation.manifestHash?.slice(0, 10)}…
+                    </small>
+                  </>
+                )}
+                {conversation.audioKind === "fallback" && (
+                  <small className="fallback-note">
+                    ⚠ On-device fallback voice — audio generation was unavailable for this answer.
+                  </small>
+                )}
                 {conversation.mutations.map((mutation) => (
                   <div className="mutation-chip" key={mutation.summary}>
                     <b>{mutation.kind}</b> {mutation.summary}
                   </div>
                 ))}
-                {conversation.manifestHash && (
-                  <small className="manifest-note">
-                    provenance {conversation.manifestHash.slice(0, 12)}…
-                  </small>
-                )}
               </div>
             )}
           </div>

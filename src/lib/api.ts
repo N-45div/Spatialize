@@ -34,6 +34,7 @@ export interface AskResponse {
     mediaType: string;
     durationSeconds: number | null;
     manifestHash: string;
+    voice?: string;
   } | null;
   mutations: { kind: string; summary: string; entity_id: string }[];
   sceneVersion?: number;
@@ -81,18 +82,37 @@ export async function fetchScene(runId: string): Promise<unknown> {
   return response.json();
 }
 
+export interface ConversationTurn {
+  question: string;
+  answer: string;
+}
+
 export async function askVenue(
   runId: string,
-  input: { text?: string; audio?: Blob; audioType?: string }
+  input: { text?: string; audio?: Blob; audioType?: string; history?: ConversationTurn[] }
 ): Promise<AskResponse> {
   const body = new FormData();
   if (input.audio) {
     body.append("audio", input.audio, `question.${input.audioType?.includes("mp4") ? "m4a" : "webm"}`);
   }
   if (input.text) body.append("text", input.text);
+  if (input.history?.length) body.append("history", JSON.stringify(input.history.slice(-4)));
   const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/ask`, { method: "POST", body });
   if (!response.ok) await readError(response, "The venue could not answer");
   return response.json() as Promise<AskResponse>;
+}
+
+export async function narrateText(
+  runId: string,
+  text: string
+): Promise<{ audio: NonNullable<AskResponse["audio"]> }> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/narrate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text })
+  });
+  if (!response.ok) await readError(response, "Narration unavailable");
+  return response.json() as Promise<{ audio: NonNullable<AskResponse["audio"]> }>;
 }
 
 export function resolveAssetUrl(url: string | null | undefined): string | null {
