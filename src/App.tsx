@@ -483,13 +483,23 @@ export default function App() {
                 <small>You: {conversation.question}</small>
                 <p>{conversation.answer}</p>
                 {conversation.audioKind === "generated" && conversation.audioUrl && (
-                  <>
-                    <audio className="answer-audio" controls src={conversation.audioUrl} />
-                    <small className="voice-provenance">
-                      ● {conversation.voice ?? "Generated voice"} · genblaze manifest{" "}
-                      {conversation.manifestHash?.slice(0, 10)}…
-                    </small>
-                  </>
+                  <div className="answer-voice">
+                    <button
+                      onClick={() => {
+                        const audio = answerAudioRef.current ?? new Audio();
+                        answerAudioRef.current = audio;
+                        audio.src = conversation.audioUrl!;
+                        audio.currentTime = 0;
+                        void audio.play().catch(() => undefined);
+                      }}
+                      aria-label="Replay the spoken answer"
+                    >
+                      ▶
+                    </button>
+                    <span title={`genblaze manifest ${conversation.manifestHash ?? ""}`}>
+                      {conversation.voice ?? "generated voice"}
+                    </span>
+                  </div>
                 )}
                 {conversation.audioKind === "fallback" && (
                   <small className="fallback-note">

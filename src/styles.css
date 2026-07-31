@@ -487,8 +487,22 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .ask-status .audio-bars b { background: var(--mint); animation: audio .7s ease-in-out infinite alternate; }
 .ask-status .audio-bars b:nth-child(2) { animation-delay: -.3s; }
 .ask-status .audio-bars b:nth-child(3) { animation-delay: -.5s; }
-.answer-audio { width: 100%; height: 32px; filter: invert(.92) hue-rotate(120deg) saturate(.5); }
-.voice-provenance { color: var(--mint); font: 9px "DM Mono"; letter-spacing: .04em; }
+.answer-voice { display: flex; align-items: center; gap: 8px; }
+.answer-voice button {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #33534a;
+  background: rgba(141, 230, 193, .1);
+  color: var(--mint);
+  font-size: 9px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.answer-voice button:hover { border-color: var(--mint); transform: scale(1.08); }
+.answer-voice span { color: #7d928a; font: 9px "DM Mono"; letter-spacing: .04em; cursor: help; }
 .fallback-note { color: var(--amber); font-size: 10.5px; line-height: 1.5; }
 
 /* ---------- demo notice + tour ---------- */
