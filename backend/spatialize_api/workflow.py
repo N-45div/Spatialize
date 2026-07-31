@@ -97,18 +97,14 @@ class RunService:
         return record
 
     def ensure_demo_run(self) -> RunRecord:
-        """A server-side run seeded with the built-in demo scene.
+        """A fresh server-side run seeded with the built-in demo scene.
 
-        Idempotent: the first call creates it, later calls return it, so the
-        studio can offer voice conversations before any plan is uploaded.
+        Every call creates an isolated copy so visitors can talk to and edit
+        the demo venue without trampling each other's scene state; the client
+        remembers its copy's run id.
         """
-        try:
-            return self.get_run("run_demo")
-        except (KeyError, ValueError):
-            pass
-
         now = datetime.now(UTC)
-        run_id = "run_demo"
+        run_id = f"run_demo_{uuid4().hex[:8]}"
         prefix = self._prefix(run_id, now)
         placeholder = b"\x89PNG\r\n\x1a\n" + b"spatialize-demo-plan"
         source = self.store.put(

@@ -103,13 +103,16 @@ export default function App() {
     }
     (async () => {
       const savedId = localStorage.getItem(RUN_STORAGE_KEY);
-      if (savedId && savedId !== "run_demo") {
+      if (savedId) {
+        const isDemo = savedId.startsWith("run_demo");
         try {
           const saved = await fetchRun(savedId);
-          if (await adopt(saved, false)) {
-            setSourceName("previous upload");
-            setUploadState("stored");
-            setUploadMessage(`Run ${saved.runId} restored`);
+          if (await adopt(saved, isDemo)) {
+            if (!isDemo) {
+              setSourceName("previous upload");
+              setUploadState("stored");
+              setUploadMessage(`Run ${saved.runId} restored`);
+            }
             return;
           }
         } catch {
@@ -117,8 +120,11 @@ export default function App() {
         }
       }
       try {
-        await adopt(await ensureDemoRun(), true);
-        if (!localStorage.getItem(TOUR_STORAGE_KEY)) setShowTour(true);
+        const demo = await ensureDemoRun();
+        if (await adopt(demo, true)) {
+          localStorage.setItem(RUN_STORAGE_KEY, demo.runId);
+          if (!localStorage.getItem(TOUR_STORAGE_KEY)) setShowTour(true);
+        }
       } catch {
         /* backend unreachable: stay on the client-side sample */
       }

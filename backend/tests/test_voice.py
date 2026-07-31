@@ -236,22 +236,21 @@ def test_ask_without_agent_returns_503(tmp_path: Path) -> None:
         assert response.status_code == 503
 
 
-def test_demo_run_is_ready_to_ask_and_idempotent(tmp_path: Path) -> None:
+def test_demo_runs_are_isolated_and_ready_to_ask(tmp_path: Path) -> None:
     with voice_client(tmp_path) as client:
-        first = client.post("/api/runs/demo")
-        assert first.status_code == 200
-        assert first.json()["runId"] == "run_demo"
-        assert first.json()["status"] == "review-required"
+        first = client.post("/api/runs/demo").json()
+        second = client.post("/api/runs/demo").json()
+        assert first["runId"].startswith("run_demo_")
+        assert first["status"] == "review-required"
+        assert first["runId"] != second["runId"]
 
-        again = client.post("/api/runs/demo")
-        assert again.json()["runId"] == "run_demo"
-
-        scene = client.get("/api/runs/run_demo/scene").json()
-        assert scene["rooms"] and scene["landmarks"]
-
-        answer = client.post("/api/runs/run_demo/ask", data={"text": "add a cafe"})
+        answer = client.post(f"/api/runs/{first['runId']}/ask", data={"text": "add a cafe"})
         assert answer.status_code == 200
         assert answer.json()["sceneChanged"] is True
+
+        # The other visitor's demo copy is untouched by the first one's edit.
+        other_scene = client.get(f"/api/runs/{second['runId']}/scene").json()
+        assert all(item["label"] != "Cafe" for item in other_scene["landmarks"])
 
 
 def test_voice_edit_survives_approval_flow(tmp_path: Path) -> None:
