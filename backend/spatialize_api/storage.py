@@ -102,10 +102,15 @@ class B2ObjectStore:
         )
 
     def get(self, key: str) -> bytes:
+        from botocore.exceptions import ClientError
+
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=key)
-        except self.client.exceptions.NoSuchKey as error:
-            raise FileNotFoundError(key) from error
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code", "")
+            if code in ("NoSuchKey", "NoSuchBucket", "404"):
+                raise FileNotFoundError(key) from error
+            raise
         return response["Body"].read()
 
     def public_url(self, key: str) -> str | None:
