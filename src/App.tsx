@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Landing } from "./components/Landing";
 import { SpatialCanvas } from "./components/SpatialCanvas";
+import { Tour } from "./components/Tour";
 import { sampleScene } from "./data/sample-scene";
 import { SpatialSceneSchema, type SpatialScene } from "./domain/spatial-scene";
 import {
   askVenue,
   createIngestionRun,
+  ensureDemoRun,
   extractRun,
+  fetchRun,
   fetchScene,
   resolveAssetUrl,
   type AskResponse,
   type IngestionRun
 } from "./lib/api";
+
+const RUN_STORAGE_KEY = "spatialize-run-id";
+const TOUR_STORAGE_KEY = "spatialize-tour-done";
 import { routeToLandmark } from "./lib/routes";
 
 type Conversation = {
@@ -50,6 +56,8 @@ export default function App() {
   const [askText, setAskText] = useState("");
   const [micError, setMicError] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [demoNotice, setDemoNotice] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -66,6 +74,49 @@ export default function App() {
       setView(window.location.hash === "#studio" ? "studio" : "landing");
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function adopt(run: IngestionRun, isDemo: boolean) {
+      const raw = await fetchScene(run.runId);
+      const parsed = parseScene(raw);
+      if (cancelled || !parsed) return false;
+      setIngestionRun(run);
+      setLiveScene(parsed);
+      if (isDemo) {
+        setSourceName("harbor-arts-demo.png");
+        setUploadState("stored");
+        setUploadMessage("Demo venue loaded · voice is live");
+        setDemoNotice(true);
+      }
+      return true;
+    }
+    (async () => {
+      const savedId = localStorage.getItem(RUN_STORAGE_KEY);
+      if (savedId && savedId !== "run_demo") {
+        try {
+          const saved = await fetchRun(savedId);
+          if (await adopt(saved, false)) {
+            setSourceName("previous upload");
+            setUploadState("stored");
+            setUploadMessage(`Run ${saved.runId} restored`);
+            return;
+          }
+        } catch {
+          localStorage.removeItem(RUN_STORAGE_KEY);
+        }
+      }
+      try {
+        await adopt(await ensureDemoRun(), true);
+        if (!localStorage.getItem(TOUR_STORAGE_KEY)) setShowTour(true);
+      } catch {
+        /* backend unreachable: stay on the client-side sample */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const route = useMemo(
@@ -129,6 +180,8 @@ export default function App() {
     try {
       const run = await createIngestionRun(file);
       setIngestionRun(run);
+      setDemoNotice(false);
+      localStorage.setItem(RUN_STORAGE_KEY, run.runId);
       setUploadState("stored");
       setUploadMessage(`${(run.source.size / 1024).toFixed(1)} KB · SHA ${run.source.sha256.slice(0, 8)}`);
       setExtracting(true);
@@ -270,7 +323,11 @@ export default function App() {
           <h1>{scene.name}</h1>
           <p className="lede">A flat venue plan transformed into a navigable, accessible spatial twin.</p>
 
-          <button className={`source-card ${uploadState}`} onClick={() => fileInput.current?.click()}>
+          <button
+            className={`source-card ${uploadState}`}
+            data-tour="source"
+            onClick={() => fileInput.current?.click()}
+          >
             <div className="source-thumb">
               <span>PDF</span>
               <div className="mini-plan"><i /><i /><i /></div>
@@ -296,7 +353,24 @@ export default function App() {
           </div>
 
           <div className="section-label">Ask the venue</div>
-          <div className="voice-panel">
+          {demoNotice && (
+            <div className="demo-notice" role="status">
+              <b>Demo venue loaded — voice is live.</b>
+              <span>No upload needed. Try one of these, spoken or typed:</span>
+              <div className="demo-prompts">
+                <button onClick={() => setAskText("How far is the studio from the entrance?")}>
+                  “How far is the studio?”
+                </button>
+                <button onClick={() => setAskText("Mark the gallery door as not accessible. I confirm.")}>
+                  “Mark the gallery door inaccessible”
+                </button>
+              </div>
+              <button className="demo-dismiss" onClick={() => setDemoNotice(false)} aria-label="Dismiss">
+                ×
+              </button>
+            </div>
+          )}
+          <div className="voice-panel" data-tour="ask">
             <button
               className={recording ? "voice-action recording" : "voice-action"}
               disabled={!voiceReady || asking}
@@ -366,7 +440,7 @@ export default function App() {
           </button>
         </aside>
 
-        <section className="viewport">
+        <section className="viewport" data-tour="viewport">
           <SpatialCanvas scene={scene} route={route} selectedId={destination} mode={viewMode} />
           <div className="viewport-glow" />
           <div className="viewport-head">
@@ -395,7 +469,7 @@ export default function App() {
           <div className="orbit-hint"><i /> Drag to orbit · Scroll to zoom</div>
         </section>
 
-        <aside className="inspector">
+        <aside className="inspector" data-tour="inspector">
           <div className="inspector-head">
             <div><span className="live-dot" /> Spatial intelligence</div>
             <span className="run-time">{extracting ? "Extracting…" : ingestionRun ? ingestionRun.status : "Demo"}</span>
@@ -438,6 +512,14 @@ export default function App() {
           <div className="provenance-foot"><span>Immutable run manifest</span><strong>{ingestionRun?.runId ?? "run_demo"}</strong></div>
         </aside>
       </section>
+      {showTour && (
+        <Tour
+          onDone={() => {
+            setShowTour(false);
+            localStorage.setItem(TOUR_STORAGE_KEY, "1");
+          }}
+        />
+      )}
     </main>
   );
 }

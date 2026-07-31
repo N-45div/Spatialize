@@ -49,6 +49,18 @@ async function readError(response: Response, fallback: string): Promise<never> {
   throw new Error(payload?.detail ?? `${fallback} (status ${response.status})`);
 }
 
+export async function fetchRun(runId: string): Promise<IngestionRun> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}`);
+  if (!response.ok) await readError(response, "Run fetch failed");
+  return response.json() as Promise<IngestionRun>;
+}
+
+export async function ensureDemoRun(): Promise<IngestionRun> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/demo`, { method: "POST" });
+  if (!response.ok) await readError(response, "Demo scene unavailable");
+  return response.json() as Promise<IngestionRun>;
+}
+
 export async function createIngestionRun(plan: File): Promise<IngestionRun> {
   const body = new FormData();
   body.append("plan", plan);
