@@ -200,6 +200,24 @@ def test_ask_without_agent_returns_503(tmp_path: Path) -> None:
         assert response.status_code == 503
 
 
+def test_demo_run_is_ready_to_ask_and_idempotent(tmp_path: Path) -> None:
+    with voice_client(tmp_path) as client:
+        first = client.post("/api/runs/demo")
+        assert first.status_code == 200
+        assert first.json()["runId"] == "run_demo"
+        assert first.json()["status"] == "review-required"
+
+        again = client.post("/api/runs/demo")
+        assert again.json()["runId"] == "run_demo"
+
+        scene = client.get("/api/runs/run_demo/scene").json()
+        assert scene["rooms"] and scene["landmarks"]
+
+        answer = client.post("/api/runs/run_demo/ask", data={"text": "add a cafe"})
+        assert answer.status_code == 200
+        assert answer.json()["sceneChanged"] is True
+
+
 def test_voice_edit_survives_approval_flow(tmp_path: Path) -> None:
     with voice_client(tmp_path) as client:
         run = extracted_run(client)

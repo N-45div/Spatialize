@@ -106,6 +106,10 @@ def create_app(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
             ) from error
 
+    @app.post("/api/runs/demo", response_model=RunRecord)
+    def demo_run() -> RunRecord:
+        return service.ensure_demo_run()
+
     @app.get("/api/runs/{run_id}", response_model=RunRecord)
     def get_run(run_id: str) -> RunRecord:
         try:

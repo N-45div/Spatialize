@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from importlib import resources
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -91,6 +92,53 @@ class RunService:
             updated_at=now,
             source=source,
         )
+        self._save_record(record)
+        self._save_locator(record)
+        return record
+
+    def ensure_demo_run(self) -> RunRecord:
+        """A server-side run seeded with the built-in demo scene.
+
+        Idempotent: the first call creates it, later calls return it, so the
+        studio can offer voice conversations before any plan is uploaded.
+        """
+        try:
+            return self.get_run("run_demo")
+        except (KeyError, ValueError):
+            pass
+
+        now = datetime.now(UTC)
+        run_id = "run_demo"
+        prefix = self._prefix(run_id, now)
+        placeholder = b"\x89PNG\r\n\x1a\n" + b"spatialize-demo-plan"
+        source = self.store.put(
+            f"{prefix}/source/plan.png",
+            placeholder,
+            "image/png",
+            {"run-id": run_id, "artifact": "source-plan"},
+        )
+        scene_data = json.loads(
+            resources.files("spatialize_api").joinpath("data/demo_scene.json").read_text("utf-8")
+        )
+        scene_data["sourceAsset"] = source.uri
+        scene_data["sourceSha256"] = source.sha256
+        scene = SpatialScene.model_validate(scene_data)
+        scene_bytes = scene.model_dump_json(by_alias=True, indent=2).encode()
+        record = RunRecord(
+            run_id=run_id,
+            status="review-required",
+            created_at=now,
+            updated_at=now,
+            source=source,
+        )
+        record.candidate_scene = self.store.put(
+            f"{prefix}/scene/candidate.json",
+            scene_bytes,
+            "application/json",
+            {"run-id": run_id, "artifact": "candidate-scene"},
+        )
+        record.current_scene = record.candidate_scene
+        record.scene_version = 1
         self._save_record(record)
         self._save_locator(record)
         return record
