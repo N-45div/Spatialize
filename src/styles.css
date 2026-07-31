@@ -115,7 +115,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
 .sidebar, .inspector {
   padding: 27px 22px;
   overflow: auto;
-  background: rgba(11, 22, 19, .93);
+  background:
+    linear-gradient(180deg, rgba(20, 36, 30, .55), transparent 220px),
+    rgba(11, 22, 19, .93);
   scrollbar-width: thin;
   scrollbar-color: #30423b transparent;
 }
@@ -126,6 +128,17 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   color: #6e8179;
   letter-spacing: .14em;
   text-transform: uppercase;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #273630, transparent);
 }
 .eyebrow { display: flex; justify-content: space-between; }
 .eyebrow b { color: var(--mint); font-weight: 400; letter-spacing: .05em; }
@@ -198,7 +211,11 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   transition: background .18s, border-color .18s, transform .18s;
 }
 .destination:hover { background: #111f1a; transform: translateX(2px); }
-.destination.active { background: linear-gradient(90deg, #1b2e26, #14231e); border-color: #3a5e4e; }
+.destination.active {
+  background: linear-gradient(90deg, #1b2e26, #14231e);
+  border-color: #3a5e4e;
+  box-shadow: inset 2px 0 0 var(--mint);
+}
 .destination > span { color: #5e726a; font: 9px "DM Mono"; }
 .destination strong, .destination small { display: block; }
 .destination strong { font-size: 11px; }
@@ -217,13 +234,14 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   padding: 12px 14px;
   border: 0;
   border-radius: 11px;
-  background: var(--lime);
+  background: linear-gradient(115deg, var(--lime), #b8ecc0 130%);
   color: #152017;
   font-size: 11px;
   font-weight: 700;
-  box-shadow: 0 8px 28px rgba(222, 237, 141, .1);
+  box-shadow: 0 8px 28px rgba(222, 237, 141, .14);
+  transition: transform .16s ease, box-shadow .16s ease;
 }
-.primary-action:hover { background: #eaf5a8; transform: translateY(-1px); }
+.primary-action:hover { transform: translateY(-1px); box-shadow: 0 12px 36px rgba(222, 237, 141, .24); }
 .primary-action.speaking { background: var(--amber); }
 .audio-bars { height: 14px; display: flex; gap: 2px; align-items: center; }
 .audio-bars b { width: 2px; height: 6px; background: #1f2d21; border-radius: 2px; }
@@ -354,11 +372,11 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   content: "";
   position: absolute;
   inset: 5px;
-  border: 4px solid #2b4036;
-  border-top-color: var(--mint);
-  border-right-color: var(--mint);
   border-radius: 50%;
-  transform: rotate(-28deg);
+  background: conic-gradient(var(--mint) 0 82%, #2b4036 82.5% 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
+  filter: drop-shadow(0 0 6px rgba(141, 230, 193, .45));
 }
 .score-ring strong, .score-ring span { position: relative; z-index: 1; }
 .score-ring strong { font-size: 19px; }
@@ -432,14 +450,19 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 }
 .ask-row input::placeholder { color: var(--muted); }
 .ask-row button {
-  padding: 10px 14px; border-radius: 10px; border: 0; background: var(--mint);
+  padding: 10px 14px; border-radius: 10px; border: 0;
+  background: linear-gradient(120deg, var(--mint), #a9e8b4);
   color: #07100e; font-weight: 700; font-size: 12px; cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
 }
+.ask-row button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(141, 230, 193, .25); }
 .ask-row button:disabled { opacity: .4; cursor: not-allowed; }
 .mic-error { color: var(--amber); font-size: 11px; }
 .conversation {
-  border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px;
-  background: var(--panel-raised); display: grid; gap: 7px;
+  border: 1px solid #2e463c; border-radius: 12px; padding: 12px 14px;
+  background: linear-gradient(150deg, rgba(27, 46, 38, .6), var(--panel-raised));
+  display: grid; gap: 7px;
+  box-shadow: inset 2px 0 0 rgba(141, 230, 193, .5), 0 10px 26px rgba(0, 0, 0, .25);
 }
 .conversation small { color: var(--muted); font-size: 11px; }
 .conversation p { margin: 0; font-size: 13px; line-height: 1.45; }
@@ -519,11 +542,11 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(340px, 1.05fr) minmax(320px, 1fr);
-  gap: 40px;
+  grid-template-columns: minmax(440px, 1.02fr) minmax(360px, 1fr);
+  gap: 56px;
   align-items: center;
-  padding: 52px 56px 40px;
-  max-width: 1240px;
+  padding: 60px 56px 40px;
+  max-width: 1280px;
   margin: 0 auto;
   width: 100%;
 }
@@ -541,11 +564,13 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 }
 
 .hero h1 {
-  margin: 22px 0 0;
-  font-size: clamp(38px, 5vw, 58px);
-  line-height: 1.04;
-  letter-spacing: -.03em;
+  margin: 24px 0 0;
+  max-width: none;
+  font-size: clamp(36px, 4.4vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -.035em;
   font-weight: 800;
+  text-wrap: balance;
 }
 
 .hero h1 em {
@@ -569,9 +594,22 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .hero-secondary { color: #9fb0aa; font-size: 13px; font-weight: 600; text-decoration: none; border-bottom: 1px solid #33453e; padding-bottom: 2px; }
 .hero-secondary:hover { color: var(--lime); border-color: var(--lime); }
 
-.hero-baseline { display: flex; gap: 26px; margin-top: 38px; flex-wrap: wrap; }
-.hero-baseline span { color: #6d7d77; font-size: 11px; }
-.hero-baseline b { color: var(--ink); font: 13px "DM Mono"; margin-right: 6px; }
+.hero-baseline { display: flex; gap: 34px; margin-top: 42px; flex-wrap: wrap; }
+.hero-baseline span {
+  color: #6d7d77;
+  font-size: 11px;
+  line-height: 1.5;
+  max-width: 150px;
+  border-left: 2px solid rgba(141, 230, 193, .35);
+  padding-left: 13px;
+}
+.hero-baseline b {
+  display: block;
+  color: var(--ink);
+  font: 500 17px "DM Mono";
+  margin-bottom: 4px;
+  letter-spacing: -.02em;
+}
 
 /* animated isometric plan */
 
@@ -739,9 +777,6 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
     #07100e;
 }
 
-.primary-action {
-  box-shadow: 0 6px 26px rgba(222, 237, 141, .16);
-}
 .voice-action.recording {
   box-shadow: 0 0 0 1px rgba(255, 203, 104, .4), 0 0 30px rgba(255, 203, 104, .15);
   animation: rec-breathe 1.6s ease-in-out infinite alternate;
