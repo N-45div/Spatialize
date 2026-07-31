@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Landing } from "./components/Landing";
 import { SpatialCanvas } from "./components/SpatialCanvas";
 import { sampleScene } from "./data/sample-scene";
 import { SpatialSceneSchema, type SpatialScene } from "./domain/spatial-scene";
@@ -32,6 +33,7 @@ function parseScene(raw: unknown): SpatialScene | null {
 }
 
 export default function App() {
+  const [view, setView] = useState(window.location.hash === "#studio" ? "studio" : "landing");
   const [liveScene, setLiveScene] = useState<SpatialScene | null>(null);
   const scene = liveScene ?? sampleScene;
   const destinations = scene.landmarks.filter((item) => item.type === "destination");
@@ -59,6 +61,13 @@ export default function App() {
     }
   }, [scene.id, destinations, destination]);
 
+  useEffect(() => {
+    const onHashChange = () =>
+      setView(window.location.hash === "#studio" ? "studio" : "landing");
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   const route = useMemo(
     () => (destination ? routeToLandmark(scene, destination) : []),
     [scene, destination]
@@ -75,6 +84,10 @@ export default function App() {
       }, 0),
     [route]
   );
+
+  if (view === "landing") {
+    return <Landing onEnter={() => { window.location.hash = "#studio"; }} />;
+  }
 
   function downloadScene() {
     const blob = new Blob([JSON.stringify(scene, null, 2)], { type: "application/json" });
