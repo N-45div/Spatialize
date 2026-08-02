@@ -147,15 +147,18 @@ export function SpatialCanvas({
     });
 
     scene.doors.forEach((door) => {
+      const blocked = !door.accessible;
       const threshold = new THREE.Mesh(
-        new THREE.BoxGeometry(door.width, 0.035, 0.24),
+        new THREE.BoxGeometry(door.width, blocked ? 0.5 : 0.035, 0.24),
         new THREE.MeshStandardMaterial({
-          color: door.confidence < 0.85 ? 0xffc95c : 0x8de6c1,
-          emissive: door.confidence < 0.85 ? 0x5c3500 : 0x0c3e2e,
-          emissiveIntensity: 0.55
+          color: blocked ? 0xe0574a : door.confidence < 0.85 ? 0xffc95c : 0x8de6c1,
+          emissive: blocked ? 0x531208 : door.confidence < 0.85 ? 0x5c3500 : 0x0c3e2e,
+          emissiveIntensity: blocked ? 0.8 : 0.55,
+          transparent: blocked,
+          opacity: blocked ? 0.88 : 1
         })
       );
-      threshold.position.set(door.position[0], 0.34, door.position[1]);
+      threshold.position.set(door.position[0], blocked ? 0.58 : 0.34, door.position[1]);
       threshold.rotation.y = -door.rotation;
       world.add(threshold);
     });

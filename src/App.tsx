@@ -5,6 +5,7 @@ import { Tour } from "./components/Tour";
 import { sampleScene } from "./data/sample-scene";
 import { SpatialSceneSchema, type SpatialScene } from "./domain/spatial-scene";
 import {
+  approveRun,
   askVenue,
   createIngestionRun,
   ensureDemoRun,
@@ -65,6 +66,9 @@ export default function App() {
   const [demoNotice, setDemoNotice] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [askStage, setAskStage] = useState<AskStage>(null);
+  const [askVoice, setAskVoice] = useState<string | null>(null);
+  const [resolvedIssues, setResolvedIssues] = useState<string[]>([]);
+  const [approving, setApproving] = useState(false);
   const historyRef = useRef<ConversationTurn[]>([]);
   const stageTimerRef = useRef<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -84,6 +88,30 @@ export default function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  useEffect(() => {
+    setResolvedIssues([]);
+  }, [ingestionRun?.runId, ingestionRun?.sceneVersion]);
+
+  async function resolveIssue(issueId: string) {
+    if (!ingestionRun || approving) return;
+    const next = resolvedIssues.includes(issueId)
+      ? resolvedIssues
+      : [...resolvedIssues, issueId];
+    setResolvedIssues(next);
+    const outstanding = scene.review.issues.some((issue) => !next.includes(issue.id));
+    if (outstanding) return;
+    setApproving(true);
+    try {
+      const approved = await approveRun(ingestionRun.runId, next);
+      setIngestionRun(approved);
+      await reloadScene(approved.runId);
+    } catch {
+      setResolvedIssues([]);
+    } finally {
+      setApproving(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -277,6 +305,7 @@ export default function App() {
     }
     if (audioUrl) {
       setAskStage("speaking");
+      setAskVoice(response.audio?.voice ?? null);
       const audio = answerAudioRef.current ?? new Audio();
       answerAudioRef.current = audio;
       audio.src = audioUrl;
@@ -475,7 +504,7 @@ export default function App() {
                 <i className="audio-bars"><b /><b /><b /></i>
                 {askStage === "transcribing" && "Transcribing your voice (AssemblyAI)…"}
                 {askStage === "thinking" && "Thinking over the validated scene…"}
-                {askStage === "speaking" && "Speaking (Gemini voice)…"}
+                {askStage === "speaking" && `Speaking — ${askVoice ?? "generated voice"}…`}
               </div>
             )}
             {conversation && (
@@ -593,13 +622,18 @@ export default function App() {
           {scene.review.issues.length === 0 && (
             <div className="review-card"><span>—</span><div><strong>No open issues</strong><small>Scene is clean</small></div></div>
           )}
-          {scene.review.issues.map((issue, index) => (
-            <div className="review-card" key={issue.id}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <div><strong>{issue.message}</strong><small>{issue.severity} priority</small></div>
-              <button>Review</button>
-            </div>
-          ))}
+          {scene.review.issues.map((issue, index) => {
+            const done = resolvedIssues.includes(issue.id);
+            return (
+              <div className={done ? "review-card resolved" : "review-card"} key={issue.id}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{issue.message}</strong><small>{issue.severity} priority</small></div>
+                <button disabled={done || approving} onClick={() => void resolveIssue(issue.id)}>
+                  {approving ? "…" : done ? "✓ Done" : "Resolve"}
+                </button>
+              </div>
+            );
+          })}
 
           <div className="section-label">Pipeline provenance</div>
           <ol className="pipeline">

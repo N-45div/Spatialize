@@ -115,6 +115,19 @@ export async function narrateText(
   return response.json() as Promise<{ audio: NonNullable<AskResponse["audio"]> }>;
 }
 
+export async function approveRun(
+  runId: string,
+  resolvedIssueIds: string[]
+): Promise<IngestionRun> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resolved_issue_ids: resolvedIssueIds })
+  });
+  if (!response.ok) await readError(response, "Approval failed");
+  return response.json() as Promise<IngestionRun>;
+}
+
 export function resolveAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;
