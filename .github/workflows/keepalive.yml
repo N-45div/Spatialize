@@ -1,14 +1,14 @@
 name: Keep the Render deploy warm
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping /health
+      - name: Ping /health (patiently — free-tier wake takes ~60s)
         env:
           APP_URL: ${{ vars.RENDER_APP_URL }}
         run: |
@@ -16,4 +16,13 @@ jobs:
             echo "Set the RENDER_APP_URL repository variable to enable pings."
             exit 0
           fi
-          curl -fsS --max-time 30 "$APP_URL/health" && echo " — awake"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 90 "$APP_URL/health"; then
+              echo " — awake (attempt $attempt)"
+              exit 0
+            fi
+            echo "attempt $attempt failed; waking..."
+            sleep 25
+          done
+          echo "unreachable after 5 attempts"
+          exit 1
