@@ -940,3 +940,133 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* --- WebMCP agent panel ------------------------------------------------- */
+.agent-panel {
+  margin: 20px 0 4px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: linear-gradient(150deg, #0d1b17, #0a1512);
+}
+.agent-panel.live { border-color: #2f5a48; }
+.agent-panel.off { border-style: dashed; }
+.agent-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 8px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: #c5d0cb;
+}
+.agent-head > div { display: flex; align-items: center; gap: 7px; }
+.agent-count { color: #52655d; }
+.agent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3d4f48;
+}
+.agent-panel.live .agent-dot {
+  background: var(--mint);
+  box-shadow: 0 0 0 3px rgba(141, 230, 193, .13);
+  animation: agent-pulse 2.4s ease-in-out infinite;
+}
+.agent-panel.error .agent-dot { background: #e08a7d; }
+@keyframes agent-pulse {
+  50% { box-shadow: 0 0 0 6px rgba(141, 230, 193, .04); }
+}
+.agent-hint {
+  margin: 10px 0 0;
+  font-size: 9px;
+  line-height: 1.62;
+  color: #7d8f88;
+}
+.agent-hint em { color: #a9bbb4; font-style: normal; }
+.agent-hint code {
+  font: 8px "DM Mono";
+  color: var(--lime);
+  word-break: break-all;
+}
+.agent-hint.error { color: #e0a79d; }
+.agent-panel .section-label { margin: 16px 0 8px; }
+
+.proposal-card {
+  padding: 11px;
+  border: 1px solid #5a4c30;
+  background: linear-gradient(100deg, #241e12, #171710);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+.proposal-card strong { display: block; font-size: 9.5px; line-height: 1.45; }
+.proposal-card small { display: block; font-size: 7.5px; margin-top: 5px; line-height: 1.5; }
+.proposal-reason { color: #b9a880; font-style: italic; }
+.proposal-impact { color: #91836a; }
+.proposal-actions { display: flex; gap: 6px; margin-top: 10px; }
+.proposal-actions button {
+  flex: 1;
+  padding: 6px;
+  border-radius: 7px;
+  font: 7.5px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  cursor: pointer;
+  border: 1px solid #62583f;
+  background: transparent;
+  color: #d1b976;
+}
+.proposal-actions .approve {
+  border-color: #35604e;
+  background: rgba(141, 230, 193, .09);
+  color: var(--mint);
+}
+
+.refusal-card {
+  padding: 11px;
+  border: 1px solid #5e3a36;
+  background: linear-gradient(100deg, #241413, #180f0e);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+.refusal-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.refusal-head strong { font-size: 9.5px; line-height: 1.45; color: #eec4bb; }
+.refusal-head button {
+  border: 0;
+  background: transparent;
+  color: #8a5f57;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+.refusal-card ul { margin: 8px 0 0; padding-left: 13px; }
+.refusal-card li { font-size: 8px; line-height: 1.6; color: #c49c94; }
+.refusal-card code { font: 7.5px "DM Mono"; color: #e08a7d; }
+.refusal-card > small { display: block; margin-top: 7px; font-size: 7.5px; color: #8a6b65; }
+
+.agent-log { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.agent-log li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 8px 9px;
+  border: 1px solid #1e2c27;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .012);
+}
+.agent-log li > div { display: flex; align-items: center; gap: 7px; }
+.agent-log code { font: 8px "DM Mono"; color: #a9bbb4; }
+.agent-log .outcome {
+  font: 6.5px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid #2b3a34;
+  color: #6e8179;
+}
+.agent-log li.answered .outcome { color: var(--mint); border-color: #2f5a48; }
+.agent-log li.queued .outcome { color: var(--amber); border-color: #5a4c30; }
+.agent-log li.refused .outcome, .agent-log li.error .outcome { color: #e08a7d; border-color: #5e3a36; }
+.agent-log small { grid-column: 1 / -1; font-size: 7.5px; color: #6b7a74; line-height: 1.5; }
+.agent-log time { font: 6.5px "DM Mono"; color: #4b5a54; }

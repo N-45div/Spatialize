@@ -22,6 +22,9 @@ import {
 const RUN_STORAGE_KEY = "spatialize-run-id";
 const TOUR_STORAGE_KEY = "spatialize-tour-done";
 import { routeToLandmark } from "./lib/routes";
+import { AgentPanel } from "./components/AgentPanel";
+import { useWebMCP } from "./webmcp/useWebMCP";
+import { recordCall, resolveProposal, type Proposal } from "./webmcp/session";
 
 type Conversation = {
   question: string;
@@ -179,8 +182,24 @@ export default function App() {
     [route]
   );
 
+  // Publish this venue's tools to any agent in the browser. Registered once per
+  // venue; swapping the floor plan re-registers and fires `toolchange`.
+  const webmcp = useWebMCP(scene, { focusLandmark: setDestination, setViewMode });
+
   if (view === "landing") {
     return <Landing onEnter={() => { window.location.hash = "#studio"; }} />;
+  }
+
+  /** A person accepts an agent's proposed change; it is already gate-validated. */
+  function approveProposal(proposal: Proposal) {
+    setLiveScene(proposal.scene);
+    resolveProposal(proposal.id);
+    recordCall("human_review", { proposal: proposal.id }, "answered", `Approved: ${proposal.description}`);
+  }
+
+  function rejectProposal(id: string) {
+    resolveProposal(id);
+    recordCall("human_review", { proposal: id }, "refused", "Rejected by the venue team");
   }
 
   function downloadScene() {
@@ -602,6 +621,8 @@ export default function App() {
             <div><span className="live-dot" /> Spatial intelligence</div>
             <span className="run-time">{extracting ? "Extracting…" : ingestionRun ? ingestionRun.status : "Demo"}</span>
           </div>
+
+          <AgentPanel status={webmcp} onApprove={approveProposal} onReject={rejectProposal} />
 
           <div className="score">
             <div className="score-ring"><strong>{Math.round(
