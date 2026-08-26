@@ -322,6 +322,72 @@ export function dataIssues(scene: SpatialScene, threshold = 0.85) {
   };
 }
 
+/**
+ * Area centroid of a room. Lets a caller name a room instead of inventing
+ * coordinates — agents are poor at arithmetic and good at names.
+ */
+export function roomCentroid(polygon: Point[]): Point {
+  let twiceArea = 0;
+  let x = 0;
+  let z = 0;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const [x0, z0] = polygon[index];
+    const [x1, z1] = polygon[(index + 1) % polygon.length];
+    const cross = x0 * z1 - x1 * z0;
+    twiceArea += cross;
+    x += (x0 + x1) * cross;
+    z += (z0 + z1) * cross;
+  }
+  if (twiceArea === 0) {
+    return [
+      polygon.reduce((total, point) => total + point[0], 0) / polygon.length,
+      polygon.reduce((total, point) => total + point[1], 0) / polygon.length
+    ];
+  }
+  return [x / (3 * twiceArea), z / (3 * twiceArea)];
+}
+
+/** Sample points along a polygon boundary at roughly `step` metre intervals. */
+function sampleBoundary(polygon: Point[], step = 0.25): Point[] {
+  const points: Point[] = [];
+  for (let index = 0; index < polygon.length; index += 1) {
+    const [x0, z0] = polygon[index];
+    const [x1, z1] = polygon[(index + 1) % polygon.length];
+    const length = Math.hypot(x1 - x0, z1 - z0);
+    const count = Math.max(1, Math.ceil(length / step));
+    for (let part = 0; part < count; part += 1) {
+      const t = part / count;
+      points.push([x0 + (x1 - x0) * t, z0 + (z1 - z0) * t]);
+    }
+  }
+  return points;
+}
+
+/**
+ * Where a doorway between two rooms would have to sit, and how far apart their
+ * walls actually are. A non-zero gap means the rooms do not touch, which the
+ * topology gate will reject — we place the best candidate and let it decide
+ * rather than second-guessing the validator here.
+ */
+export function sharedBoundaryPoint(
+  roomA: Room,
+  roomB: Room
+): { point: Point; gap: number } {
+  const samplesA = sampleBoundary(roomA.polygon);
+  const samplesB = sampleBoundary(roomB.polygon);
+
+  let best: { point: Point; gap: number } = { point: samplesA[0], gap: Infinity };
+  for (const a of samplesA) {
+    for (const b of samplesB) {
+      const gap = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (gap < best.gap) {
+        best = { point: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], gap };
+      }
+    }
+  }
+  return best;
+}
+
 export function formatMetres(value: number) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} m`;
 }

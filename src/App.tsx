@@ -25,6 +25,7 @@ import { routeToLandmark } from "./lib/routes";
 import { AgentPanel } from "./components/AgentPanel";
 import { useWebMCP } from "./webmcp/useWebMCP";
 import { recordCall, resolveProposal, type Proposal } from "./webmcp/session";
+import { planRoute } from "./webmcp/queries";
 
 type Conversation = {
   question: string;
@@ -181,6 +182,14 @@ export default function App() {
       }, 0),
     [route]
   );
+
+  // The same computation the agent's routing tool runs, so the caption and the
+  // agent can never disagree about whether somewhere is reachable.
+  const accessPlan = useMemo(
+    () => (destination ? planRoute(scene, { to: destination, stepFree: true }) : null),
+    [scene, destination]
+  );
+  const blockedBy = accessPlan?.fallbackUsed ? accessPlan.plan.blockers[0]?.doorLabel : null;
 
   // Publish this venue's tools to any agent in the browser. Registered once per
   // venue; swapping the floor plan re-registers and fires `toolchange`.
@@ -590,6 +599,12 @@ export default function App() {
         <section className="viewport" data-tour="viewport">
           <SpatialCanvas scene={scene} route={route} selectedId={destination} mode={viewMode} />
           <div className="viewport-glow" />
+          <AgentPanel
+            scene={scene}
+            status={webmcp}
+            onApprove={approveProposal}
+            onReject={rejectProposal}
+          />
           <div className="viewport-head">
             <div><span>Interactive spatial twin</span><strong>{liveScene ? "Extracted scene · Accessible view" : "Ground floor · Accessible view"}</strong></div>
             <div className="view-controls">
@@ -609,7 +624,13 @@ export default function App() {
               <div className="route-stats">
                 <span><strong>{Math.round(routeDistance)} m</strong><small>distance</small></span>
                 <span><strong>{Math.max(1, Math.round(routeDistance / 1.1))} min</strong><small>walking</small></span>
-                <b>{route.length ? "Step-free" : "No step-free route"}</b>
+                <b className={blockedBy || !route.length ? "blocked" : ""}>
+                  {blockedBy
+                    ? `Blocked at ${blockedBy}`
+                    : route.length
+                      ? "Step-free"
+                      : "No step-free route"}
+                </b>
               </div>
             </div>
           )}
@@ -621,8 +642,6 @@ export default function App() {
             <div><span className="live-dot" /> Spatial intelligence</div>
             <span className="run-time">{extracting ? "Extracting…" : ingestionRun ? ingestionRun.status : "Demo"}</span>
           </div>
-
-          <AgentPanel status={webmcp} onApprove={approveProposal} onReject={rejectProposal} />
 
           <div className="score">
             <div className="score-ring"><strong>{Math.round(

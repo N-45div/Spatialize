@@ -34,6 +34,15 @@ export type SceneMutation =
       landmarkType: "entrance" | "elevator" | "stairs" | "restroom" | "destination";
       position: [number, number];
       reason: string;
+    }
+  | {
+      kind: "add-door";
+      label: string;
+      connects: [string, string];
+      position: [number, number];
+      width: number;
+      accessible: boolean;
+      reason: string;
     };
 
 export interface GateViolation {
@@ -78,6 +87,90 @@ function slugify(text: string) {
   );
 }
 
+/** The labelled collection a relabel targets. */
+function collectionFor(scene: SpatialScene, entityKind: "room" | "door" | "landmark") {
+  if (entityKind === "room") return scene.rooms;
+  if (entityKind === "door") return scene.doors;
+  return scene.landmarks;
+}
+
+/** A slug that is not already taken by anything in `taken`. */
+function freeId(label: string, taken: Set<string>) {
+  const base = slugify(label);
+  let id = base;
+  let suffix = 2;
+  while (taken.has(id)) id = `${base}-${suffix++}`;
+  return id;
+}
+
+type Draft = SpatialScene;
+
+function applyDoorAccessible(
+  draft: Draft,
+  mutation: Extract<SceneMutation, { kind: "set-door-accessible" }>
+) {
+  const door = draft.doors.find((item) => item.id === mutation.doorId);
+  if (!door) return;
+  door.accessible = mutation.accessible;
+  door.evidence.connectivity = agentEvidence(mutation.reason);
+  if (!mutation.cascade) return;
+  for (const edge of draft.routeGraph.edges) {
+    if (edge.doorId === door.id) edge.accessible = mutation.accessible;
+  }
+}
+
+function applyDoorWidth(draft: Draft, mutation: Extract<SceneMutation, { kind: "set-door-width" }>) {
+  const door = draft.doors.find((item) => item.id === mutation.doorId);
+  if (!door) return;
+  door.width = mutation.width;
+  door.evidence.width = agentEvidence(mutation.reason);
+}
+
+function applyRelabel(draft: Draft, mutation: Extract<SceneMutation, { kind: "relabel" }>) {
+  const entity = collectionFor(draft, mutation.entityKind).find(
+    (item) => item.id === mutation.entityId
+  );
+  if (!entity) return;
+  entity.label = mutation.label;
+  // Rooms and landmarks carry label evidence; the door schema has no slot for
+  // it, so a door rename simply carries none rather than mis-stamping another.
+  if ("label" in entity.evidence) {
+    entity.evidence.label = agentEvidence(mutation.reason);
+  }
+}
+
+function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-landmark" }>) {
+  draft.landmarks.push({
+    id: freeId(mutation.label, new Set(draft.landmarks.map((item) => item.id))),
+    label: mutation.label,
+    type: mutation.landmarkType,
+    position: mutation.position,
+    confidence: 0.6,
+    evidence: {
+      label: agentEvidence(mutation.reason),
+      geometry: agentEvidence(mutation.reason)
+    }
+  });
+}
+
+function applyAddDoor(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-door" }>) {
+  draft.doors.push({
+    id: freeId(mutation.label, new Set(draft.doors.map((item) => item.id))),
+    label: mutation.label,
+    position: mutation.position,
+    width: mutation.width,
+    rotation: 0,
+    connects: mutation.connects,
+    accessible: mutation.accessible,
+    confidence: 0.6,
+    evidence: {
+      position: agentEvidence(mutation.reason),
+      width: agentEvidence(mutation.reason),
+      connectivity: agentEvidence(mutation.reason)
+    }
+  });
+}
+
 /**
  * Produce the candidate scene for a mutation. This is deliberately allowed to
  * build an *invalid* scene — judging that is the gate's job, not ours.
@@ -86,66 +179,24 @@ function applyMutation(scene: SpatialScene, mutation: SceneMutation): unknown {
   const draft = clone(scene);
 
   switch (mutation.kind) {
-    case "set-door-accessible": {
-      const door = draft.doors.find((item) => item.id === mutation.doorId);
-      if (!door) return draft;
-      door.accessible = mutation.accessible;
-      door.evidence.connectivity = agentEvidence(mutation.reason);
-      if (mutation.cascade) {
-        for (const edge of draft.routeGraph.edges) {
-          if (edge.doorId === door.id) edge.accessible = mutation.accessible;
-        }
-      }
-      return draft;
-    }
-
-    case "set-door-width": {
-      const door = draft.doors.find((item) => item.id === mutation.doorId);
-      if (!door) return draft;
-      door.width = mutation.width;
-      door.evidence.width = agentEvidence(mutation.reason);
-      return draft;
-    }
-
-    case "relabel": {
-      const collection =
-        mutation.entityKind === "room"
-          ? draft.rooms
-          : mutation.entityKind === "door"
-            ? draft.doors
-            : draft.landmarks;
-      const entity = collection.find((item) => item.id === mutation.entityId);
-      if (!entity) return draft;
-      entity.label = mutation.label;
-      if ("evidence" in entity && "label" in entity.evidence) {
-        entity.evidence.label = agentEvidence(mutation.reason);
-      }
-      return draft;
-    }
-
-    case "add-landmark": {
-      const base = slugify(mutation.label);
-      const taken = new Set(draft.landmarks.map((item) => item.id));
-      let id = base;
-      let suffix = 2;
-      while (taken.has(id)) id = `${base}-${suffix++}`;
-      draft.landmarks.push({
-        id,
-        label: mutation.label,
-        type: mutation.landmarkType,
-        position: mutation.position,
-        confidence: 0.6,
-        evidence: {
-          label: agentEvidence(mutation.reason),
-          geometry: agentEvidence(mutation.reason)
-        }
-      });
-      return draft;
-    }
-
-    default:
-      return draft;
+    case "set-door-accessible":
+      applyDoorAccessible(draft, mutation);
+      break;
+    case "set-door-width":
+      applyDoorWidth(draft, mutation);
+      break;
+    case "relabel":
+      applyRelabel(draft, mutation);
+      break;
+    case "add-landmark":
+      applyAddLandmark(draft, mutation);
+      break;
+    case "add-door":
+      applyAddDoor(draft, mutation);
+      break;
   }
+
+  return draft;
 }
 
 function diffAccessibility(before: SpatialScene, after: SpatialScene): AccessibilityImpact {
@@ -201,19 +252,23 @@ export function describeMutation(scene: SpatialScene, mutation: SceneMutation): 
     case "set-door-width":
       return `Set "${doorLabel(mutation.doorId)}" clear width to ${mutation.width} m`;
     case "relabel": {
-      const collection =
-        mutation.entityKind === "room"
-          ? scene.rooms
-          : mutation.entityKind === "door"
-            ? scene.doors
-            : scene.landmarks;
-      const current = collection.find((item) => item.id === mutation.entityId)?.label ?? mutation.entityId;
+      const current =
+        collectionFor(scene, mutation.entityKind).find((item) => item.id === mutation.entityId)
+          ?.label ?? mutation.entityId;
       return `Rename ${mutation.entityKind} "${current}" to "${mutation.label}"`;
     }
     case "add-landmark":
       return `Add ${mutation.landmarkType} "${mutation.label}" at ${mutation.position
         .map((value) => value.toFixed(1))
         .join(", ")}`;
+    case "add-door": {
+      const roomLabel = (id: string) =>
+        id === "outside" ? "outside" : (scene.rooms.find((item) => item.id === id)?.label ?? id);
+      return (
+        `Add ${mutation.accessible ? "step-free " : ""}doorway "${mutation.label}" between ` +
+        `${roomLabel(mutation.connects[0])} and ${roomLabel(mutation.connects[1])}`
+      );
+    }
     default:
       return "Unknown change";
   }

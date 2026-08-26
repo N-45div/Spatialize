@@ -941,56 +941,100 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
 
-/* --- WebMCP agent panel ------------------------------------------------- */
-.agent-panel {
-  margin: 20px 0 4px;
-  padding: 13px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: linear-gradient(150deg, #0d1b17, #0a1512);
-}
-.agent-panel.live { border-color: #2f5a48; }
-.agent-panel.off { border-style: dashed; }
-.agent-head {
+/* --- WebMCP agent dock --------------------------------------------------- */
+/* Anchored inside the viewport rather than the inspector rail: the rail is
+   hidden below 1120px, and ChatGPT renders this page in a narrow panel beside
+   a conversation. The agent surface has to survive that width. */
+.agent-dock {
+  position: absolute;
+  top: 74px;
+  right: 18px;
+  width: 328px;
+  max-height: calc(100% - 150px);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  border: 1px solid #2f5a48;
+  border-radius: 14px;
+  background: rgba(9, 20, 17, .93);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 22px 50px rgba(2, 8, 6, .5);
+  overflow: hidden;
+  z-index: 4;
+}
+.agent-dock.off { border-color: var(--line); }
+.agent-dock.error { border-color: #5e3a36; }
+
+.dock-bar {
+  display: flex;
   align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
   font: 8px "DM Mono";
   text-transform: uppercase;
   letter-spacing: .1em;
   color: #c5d0cb;
 }
-.agent-head > div { display: flex; align-items: center; gap: 7px; }
-.agent-count { color: #52655d; }
-.agent-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3d4f48;
+.dock-bar strong { font-weight: 400; }
+.dock-meta { color: #52655d; }
+.dock-chevron { margin-left: auto; color: #52655d; }
+.dock-badge {
+  padding: 3px 6px;
+  border-radius: 5px;
+  font: 6.5px "DM Mono";
+  letter-spacing: .06em;
 }
-.agent-panel.live .agent-dot {
+.dock-badge.amber { color: var(--amber); background: rgba(255, 203, 104, .12); }
+.dock-badge.rose { color: #e08a7d; background: rgba(224, 138, 125, .13); }
+
+.dock-body {
+  padding: 0 13px 13px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #30423b transparent;
+}
+.dock-pitch {
+  margin: 0 0 4px;
+  font-size: 9.5px;
+  line-height: 1.65;
+  color: #8fa39b;
+}
+.dock-pitch em { color: var(--mint); font-style: normal; }
+.agent-dock .section-label { margin: 15px 0 8px; }
+
+.agent-dot { width: 6px; height: 6px; border-radius: 50%; background: #3d4f48; }
+.agent-dock.live .agent-dot {
   background: var(--mint);
   box-shadow: 0 0 0 3px rgba(141, 230, 193, .13);
   animation: agent-pulse 2.4s ease-in-out infinite;
 }
-.agent-panel.error .agent-dot { background: #e08a7d; }
-@keyframes agent-pulse {
-  50% { box-shadow: 0 0 0 6px rgba(141, 230, 193, .04); }
-}
-.agent-hint {
-  margin: 10px 0 0;
-  font-size: 9px;
-  line-height: 1.62;
-  color: #7d8f88;
-}
-.agent-hint em { color: #a9bbb4; font-style: normal; }
-.agent-hint code {
-  font: 8px "DM Mono";
-  color: var(--lime);
-  word-break: break-all;
-}
+.agent-dock.error .agent-dot { background: #e08a7d; }
+@keyframes agent-pulse { 50% { box-shadow: 0 0 0 6px rgba(141, 230, 193, .04); } }
+
+.agent-hint { margin: 10px 0 0; font-size: 9px; line-height: 1.62; color: #7d8f88; }
+.agent-hint code { font: 8px "DM Mono"; color: var(--lime); word-break: break-all; }
 .agent-hint.error { color: #e0a79d; }
-.agent-panel .section-label { margin: 16px 0 8px; }
+
+.try-these { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.try-these li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 9px;
+  align-items: start;
+  padding: 9px 10px;
+  border: 1px solid #22322c;
+  border-left-width: 2px;
+  border-radius: 9px;
+}
+.try-these li > span { font: 7px "DM Mono"; color: #6e8179; padding-top: 2px; }
+.try-these p { margin: 0; font-size: 9.5px; line-height: 1.5; color: #b3c3bc; }
+.try-these .ask { border-left-color: var(--mint); }
+.try-these .report { border-left-color: var(--amber); }
+.try-these .refuse { border-left-color: #e08a7d; }
 
 .proposal-card {
   padding: 11px;
@@ -1024,21 +1068,19 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 
 .refusal-card {
   padding: 11px;
-  border: 1px solid #5e3a36;
-  background: linear-gradient(100deg, #241413, #180f0e);
+  border: 1px solid #7a4139;
+  background: linear-gradient(100deg, #2a1614, #180f0e);
   border-radius: 11px;
   margin-bottom: 7px;
+  animation: refusal-land .42s ease-out;
+}
+@keyframes refusal-land {
+  from { transform: translateY(-5px); box-shadow: 0 0 0 4px rgba(224, 138, 125, .16); }
+  to { transform: none; box-shadow: 0 0 0 0 rgba(224, 138, 125, 0); }
 }
 .refusal-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .refusal-head strong { font-size: 9.5px; line-height: 1.45; color: #eec4bb; }
-.refusal-head button {
-  border: 0;
-  background: transparent;
-  color: #8a5f57;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0 2px;
-}
+.refusal-head button { border: 0; background: transparent; color: #8a5f57; cursor: pointer; line-height: 1; padding: 0 2px; }
 .refusal-card ul { margin: 8px 0 0; padding-left: 13px; }
 .refusal-card li { font-size: 8px; line-height: 1.6; color: #c49c94; }
 .refusal-card code { font: 7.5px "DM Mono"; color: #e08a7d; }
@@ -1070,3 +1112,69 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .agent-log li.refused .outcome, .agent-log li.error .outcome { color: #e08a7d; border-color: #5e3a36; }
 .agent-log small { grid-column: 1 / -1; font-size: 7.5px; color: #6b7a74; line-height: 1.5; }
 .agent-log time { font: 6.5px "DM Mono"; color: #4b5a54; }
+
+.catalog-toggle {
+  width: 100%;
+  margin-top: 13px;
+  padding: 8px;
+  border: 1px dashed #2f4239;
+  border-radius: 8px;
+  background: transparent;
+  color: #7d8f88;
+  font: 7.5px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.catalog-toggle:hover { color: var(--mint); border-color: #3d6455; }
+
+.tool-catalog { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.tool-catalog li { padding: 9px 10px; border: 1px solid #1e2c27; border-radius: 9px; }
+.tool-catalog li > div { display: flex; align-items: center; gap: 7px; }
+.tool-catalog code { font: 8px "DM Mono"; color: #a9bbb4; }
+.tool-catalog .kind {
+  font: 6.5px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.tool-catalog .kind.read { color: var(--mint); background: rgba(141, 230, 193, .1); }
+.tool-catalog .kind.write { color: var(--amber); background: rgba(255, 203, 104, .1); }
+.tool-catalog p { margin: 6px 0 0; font-size: 8px; line-height: 1.55; color: #6b7a74; }
+.tool-params { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.tool-params span {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px 5px;
+  border: 1px solid #24332d;
+  border-radius: 4px;
+  font: 6.5px "DM Mono";
+  color: #5f7169;
+}
+.tool-params span.required { color: #9fb2aa; border-color: #35493f; }
+.tool-params i { font-style: normal; color: #4b5a54; }
+
+@media (max-width: 900px) {
+  /* Become a bottom sheet so the 3D view stays visible above it. */
+  .agent-dock {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: 62%;
+    border-radius: 14px 14px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .agent-dock[data-open="true"] ~ .route-caption,
+  .agent-dock[data-open="true"] ~ .orbit-hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-dock.live .agent-dot { animation: none; }
+  .refusal-card { animation: none; }
+}
+.route-stats b.blocked { color: #e08a7d; border-color: #5e3a36; }

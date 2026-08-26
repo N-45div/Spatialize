@@ -1,10 +1,12 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import type { SpatialScene } from "../domain/spatial-scene";
 import {
   dismissRefusal,
   getAgentSession,
   subscribeToAgentSession,
   type Proposal
 } from "../webmcp/session";
+import { describeToolSurface } from "../webmcp/tools";
 import type { WebMCPStatus } from "../webmcp/useWebMCP";
 
 const OUTCOME_LABEL = {
@@ -13,6 +15,17 @@ const OUTCOME_LABEL = {
   refused: "refused",
   error: "error"
 } as const;
+
+/**
+ * The three prompts that walk a first-time visitor through the whole idea:
+ * an answer computed from geometry, a change that survives the gate and waits
+ * for a person, and a change the gate will not allow at all.
+ */
+const TRY_THESE = [
+  { arc: "ask", text: "Is the quiet room step-free from the main entrance?" },
+  { arc: "report", text: "The quiet-room doorway has a step now — report it." },
+  { arc: "refuse", text: "Add a doorway between the main lobby and the quiet room." }
+] as const;
 
 function ago(timestamp: number) {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
@@ -28,120 +41,175 @@ function impactLine(proposal: Proposal) {
 }
 
 export function AgentPanel({
+  scene,
   status,
   onApprove,
   onReject
 }: {
+  scene: SpatialScene;
   status: WebMCPStatus;
   onApprove: (proposal: Proposal) => void;
   onReject: (id: string) => void;
 }) {
   const session = useSyncExternalStore(subscribeToAgentSession, getAgentSession, getAgentSession);
+  const [open, setOpen] = useState(true);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const catalog = useMemo(() => describeToolSurface(scene), [scene]);
 
-  const state = !status.supported
-    ? "off"
-    : status.error
-      ? "error"
-      : status.registered.length
-        ? "live"
-        : "pending";
+  let state: "live" | "off" | "pending" | "error" = "pending";
+  if (!status.supported) state = "off";
+  else if (status.error) state = "error";
+  else if (status.registered.length) state = "live";
+
+  const statusText = {
+    live: `${status.registered.length} tools live`,
+    off: "browser not agent-ready",
+    pending: "registering…",
+    error: "registration failed"
+  }[state];
+
+  const pending = session.proposals.length;
+  const blocked = session.refusals.length;
 
   return (
-    <div className={`agent-panel ${state}`} data-tour="agent">
-      <div className="agent-head">
-        <div>
-          <span className="agent-dot" />
-          Agent tools
-        </div>
-        <span className="agent-count">
-          {state === "live" ? `${status.registered.length} registered` : null}
-          {state === "off" ? "browser not agent-ready" : null}
-          {state === "pending" ? "registering…" : null}
-          {state === "error" ? "registration failed" : null}
+    <section className={`agent-dock ${state}`} data-open={open} data-tour="agent">
+      <button className="dock-bar" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <span className="agent-dot" />
+        <strong>Agent tools</strong>
+        <span className="dock-meta">{statusText}</span>
+        {pending > 0 && <span className="dock-badge amber">{pending} to approve</span>}
+        {blocked > 0 && <span className="dock-badge rose">{blocked} blocked</span>}
+        <span className="dock-chevron" aria-hidden>
+          {open ? "▾" : "▴"}
         </span>
-      </div>
+      </button>
 
-      {state === "off" && (
-        <p className="agent-hint">
-          This page publishes its tools with WebMCP. Open it in the ChatGPT app browser, or in
-          Chrome 149+ with <code>chrome://flags/#enable-webmcp-testing</code> enabled, and your
-          agent can route, audit and correct this venue directly.
-        </p>
-      )}
+      {open && (
+        <div className="dock-body">
+          <p className="dock-pitch">
+            Ask your agent about this building and it answers from validated geometry, never
+            from a guess. Tell it what changed on the ground and the change has to survive the
+            topology gate <em>and</em> a person before it becomes venue data.
+          </p>
 
-      {state === "error" && <p className="agent-hint error">{status.error}</p>}
+          {state === "off" && (
+            <p className="agent-hint">
+              Open this page in the ChatGPT app browser, or Chrome 149+ with{" "}
+              <code>chrome://flags/#enable-webmcp-testing</code> enabled, and the{" "}
+              {catalog.length} tools below become callable by your agent.
+            </p>
+          )}
 
-      {state === "live" && !session.calls.length && (
-        <p className="agent-hint">
-          Ready. Ask your agent something like <em>“is the quiet room step-free from the
-          entrance?”</em> or tell it <em>“the quiet-room doorway has a step now”</em>.
-        </p>
-      )}
+          {state === "error" && <p className="agent-hint error">{status.error}</p>}
 
-      {session.proposals.length > 0 && (
-        <>
-          <div className="section-label">
-            Awaiting your approval ({session.proposals.length})
-          </div>
-          {session.proposals.map((proposal) => (
-            <div className="proposal-card" key={proposal.id}>
-              <strong>{proposal.description}</strong>
-              <small className="proposal-reason">“{proposal.reason}”</small>
-              <small className="proposal-impact">{impactLine(proposal)}</small>
-              <div className="proposal-actions">
-                <button className="approve" onClick={() => onApprove(proposal)}>
-                  Approve
-                </button>
-                <button className="reject" onClick={() => onReject(proposal.id)}>
-                  Reject
-                </button>
-              </div>
-            </div>
-          ))}
-        </>
-      )}
+          {pending > 0 && (
+            <>
+              <div className="section-label">Waiting on you ({pending})</div>
+              {session.proposals.map((proposal) => (
+                <div className="proposal-card" key={proposal.id}>
+                  <strong>{proposal.description}</strong>
+                  <small className="proposal-reason">“{proposal.reason}”</small>
+                  <small className="proposal-impact">{impactLine(proposal)}</small>
+                  <div className="proposal-actions">
+                    <button className="approve" onClick={() => onApprove(proposal)}>
+                      Approve
+                    </button>
+                    <button className="reject" onClick={() => onReject(proposal.id)}>
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
-      {session.refusals.length > 0 && (
-        <>
-          <div className="section-label">Blocked by the topology gate</div>
-          {session.refusals.map((refusal) => (
-            <div className="refusal-card" key={refusal.id}>
-              <div className="refusal-head">
-                <strong>{refusal.description}</strong>
-                <button onClick={() => dismissRefusal(refusal.id)} aria-label="Dismiss">
-                  ×
-                </button>
-              </div>
-              <ul>
-                {refusal.violations.slice(0, 3).map((violation, index) => (
-                  <li key={`${refusal.id}-${index}`}>
-                    <code>{violation.path || "scene"}</code> {violation.message}
+          {blocked > 0 && (
+            <>
+              <div className="section-label">Refused by the topology gate</div>
+              {session.refusals.map((refusal) => (
+                <div className="refusal-card" key={refusal.id}>
+                  <div className="refusal-head">
+                    <strong>{refusal.description}</strong>
+                    <button onClick={() => dismissRefusal(refusal.id)} aria-label="Dismiss">
+                      ×
+                    </button>
+                  </div>
+                  <ul>
+                    {refusal.violations.slice(0, 3).map((violation, index) => (
+                      <li key={`${refusal.id}-${index}`}>
+                        <code>{violation.path || "scene"}</code> {violation.message}
+                      </li>
+                    ))}
+                  </ul>
+                  <small>The agent was told exactly this. The scene did not change.</small>
+                </div>
+              ))}
+            </>
+          )}
+
+          {session.calls.length > 0 && (
+            <>
+              <div className="section-label">Agent activity</div>
+              <ol className="agent-log">
+                {session.calls.slice(0, 6).map((entry) => (
+                  <li key={entry.id} className={entry.outcome}>
+                    <div>
+                      <code>{entry.tool}</code>
+                      <span className="outcome">{OUTCOME_LABEL[entry.outcome]}</span>
+                    </div>
+                    <small>{entry.summary}</small>
+                    <time>{ago(entry.at)}</time>
                   </li>
                 ))}
-              </ul>
-              <small>The scene was not modified.</small>
-            </div>
-          ))}
-        </>
-      )}
+              </ol>
+            </>
+          )}
 
-      {session.calls.length > 0 && (
-        <>
-          <div className="section-label">Agent activity</div>
-          <ol className="agent-log">
-            {session.calls.slice(0, 8).map((entry) => (
-              <li key={entry.id} className={entry.outcome}>
-                <div>
-                  <code>{entry.tool}</code>
-                  <span className="outcome">{OUTCOME_LABEL[entry.outcome]}</span>
-                </div>
-                <small>{entry.summary}</small>
-                <time>{ago(entry.at)}</time>
-              </li>
-            ))}
-          </ol>
-        </>
+          {session.calls.length === 0 && (
+            <>
+              <div className="section-label">Try this, in order</div>
+              <ol className="try-these">
+                {TRY_THESE.map((item, index) => (
+                  <li key={item.arc} className={item.arc}>
+                    <span>{index + 1}</span>
+                    <p>{item.text}</p>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+
+          <button className="catalog-toggle" onClick={() => setShowCatalog((value) => !value)}>
+            {showCatalog ? "Hide" : "Show"} the {catalog.length} tools this page publishes
+          </button>
+
+          {showCatalog && (
+            <ul className="tool-catalog">
+              {catalog.map((tool) => (
+                <li key={tool.name}>
+                  <div>
+                    <code>{tool.name}</code>
+                    <span className={tool.readOnly ? "kind read" : "kind write"}>
+                      {tool.readOnly ? "reads" : "proposes"}
+                    </span>
+                  </div>
+                  <p>{tool.description}</p>
+                  {tool.params.length > 0 && (
+                    <div className="tool-params">
+                      {tool.params.map((param) => (
+                        <span key={param.name} className={param.required ? "required" : ""}>
+                          {param.name}
+                          <i>{param.type}</i>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-    </div>
+    </section>
   );
 }

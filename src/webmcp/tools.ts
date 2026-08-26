@@ -18,7 +18,9 @@ import {
   polygonArea,
   resolveDoor,
   resolveLandmark,
-  resolveRoom
+  resolveRoom,
+  roomCentroid,
+  sharedBoundaryPoint
 } from "./queries";
 import { queueProposal, recordCall, recordRefusal } from "./session";
 import type { ToolDefinition, ToolResult } from "./types";
@@ -114,6 +116,40 @@ function submitMutation(
       `${impactLines.join(" ")}\n\n` +
       `It is not live yet. Someone on the venue team approves or rejects it in the ` +
       `Agent panel on this page.`
+  );
+}
+
+export interface ToolSummary {
+  name: string;
+  description: string;
+  readOnly: boolean;
+  params: { name: string; type: string; required: boolean }[];
+}
+
+/**
+ * The published tool contract, for display. Judges and curious visitors can
+ * read what this page offers an agent without opening the source.
+ */
+export function describeToolSurface(scene: SpatialScene): ToolSummary[] {
+  const noop = () => undefined;
+  return buildTools({ getScene: () => scene, focusLandmark: noop, setViewMode: noop }).map(
+    (tool) => {
+      const properties = (tool.inputSchema?.properties ?? {}) as Record<
+        string,
+        { type?: string }
+      >;
+      const required = new Set(tool.inputSchema?.required ?? []);
+      return {
+        name: tool.name,
+        description: tool.description,
+        readOnly: tool.annotations?.readOnlyHint === true,
+        params: Object.entries(properties).map(([name, schema]) => ({
+          name,
+          type: schema?.type ?? "string",
+          required: required.has(name)
+        }))
+      };
+    }
   );
 }
 
@@ -449,23 +485,26 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
     },
 
     {
-      name: "report_access_change",
+      name: "propose_access_change",
       description:
-        "Report that a doorway's step-free status has changed in the real world — for " +
-        "example a visitor finds a temporary ramp removed, or a step installed. The change " +
-        "is validated against the venue's topology rules and then queued for a human on the " +
-        "venue team to approve. It does not go live on your say-so.",
+        "Propose that a doorway's step-free status has changed in the real world — a visitor " +
+        "finds a ramp removed, or a step installed. The proposal is checked against the " +
+        "venue's topology rules and then waits for someone on the venue team to approve it. " +
+        "Nothing changes on the strength of this call alone.",
       inputSchema: {
         type: "object",
         properties: {
-          door: { type: "string", description: "Door id or label, from describe_room or check_accessibility." },
+          door: {
+            type: "string",
+            description: "The doorway, by its name or id. Names work: 'Quiet-room doorway'."
+          },
           step_free: {
             type: "boolean",
-            description: "True if the door IS now step-free, false if it is now blocked."
+            description: "True if the doorway IS now step-free, false if it is now blocked."
           },
           reason: {
             type: "string",
-            description: "What the person actually observed, in their words."
+            description: "What the person actually observed, in their own words."
           }
         },
         required: ["door", "step_free", "reason"],
@@ -476,16 +515,18 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         const query = str(args, "door");
         const door = resolveDoor(scene, query);
         if (!door) {
-          recordCall("report_access_change", args, "error", `unknown door "${query}"`);
+          recordCall("propose_access_change", args, "error", `unknown door "${query}"`);
           return fail(
-            `No door in ${scene.name} matches "${query}". Known doors: ` +
+            `No doorway in ${scene.name} matches "${query}". The doorways here are: ` +
               `${scene.doors.map((item) => `${item.label} (${item.id})`).join(", ")}.`
           );
         }
         const reason = str(args, "reason");
-        if (!reason) return fail("Pass what the person observed in `reason` — it is stored as provenance.");
+        if (!reason) {
+          return fail("Say what the person observed in `reason` — it is kept as provenance.");
+        }
 
-        return submitMutation(context, "report_access_change", args, {
+        return submitMutation(context, "propose_access_change", args, {
           kind: "set-door-accessible",
           doorId: door.id,
           accessible: bool(args, "step_free", false),
@@ -496,11 +537,76 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
     },
 
     {
+      name: "propose_doorway",
+      description:
+        "Propose a doorway the floor-plan extraction missed, by naming the two rooms it " +
+        "joins. Say which rooms in plain language and the page works out where the doorway " +
+        "would have to sit. The topology gate rejects a doorway between rooms whose walls do " +
+        "not actually touch, so a guess cannot become venue data.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          room_a: { type: "string", description: "One room the doorway joins, by name." },
+          room_b: { type: "string", description: "The other room the doorway joins, by name." },
+          label: { type: "string", description: "Optional name for the doorway." },
+          step_free: {
+            type: "boolean",
+            description: "Whether the doorway is step-free. Defaults to true."
+          },
+          width: {
+            type: "number",
+            description: "Clear width in metres, if the person measured it. Defaults to 0.9."
+          },
+          reason: { type: "string", description: "What the person observed." }
+        },
+        required: ["room_a", "room_b", "reason"],
+        additionalProperties: false
+      },
+      execute: (args) => {
+        const scene = context.getScene();
+        const reason = str(args, "reason");
+        if (!reason) {
+          return fail("Say what the person observed in `reason` — it is kept as provenance.");
+        }
+
+        const roomA = resolveRoom(scene, str(args, "room_a"));
+        const roomB = resolveRoom(scene, str(args, "room_b"));
+        const known = scene.rooms.map((item) => `${item.label} (${item.id})`).join(", ");
+
+        if (!roomA || !roomB) {
+          const missing = !roomA ? str(args, "room_a") : str(args, "room_b");
+          recordCall("propose_doorway", args, "error", `unknown room "${missing}"`);
+          return fail(`No room in ${scene.name} matches "${missing}". The rooms here are: ${known}.`);
+        }
+        if (roomA.id === roomB.id) {
+          recordCall("propose_doorway", args, "error", "both rooms were the same");
+          return fail(
+            `A doorway joins two different rooms, and both arguments resolved to ` +
+              `"${roomA.label}". The rooms here are: ${known}.`
+          );
+        }
+
+        const { point } = sharedBoundaryPoint(roomA, roomB);
+        const width = num(args, "width") ?? 0.9;
+
+        return submitMutation(context, "propose_doorway", args, {
+          kind: "add-door",
+          label: str(args, "label") || `${roomA.label} to ${roomB.label}`,
+          connects: [roomA.id, roomB.id],
+          position: point,
+          width,
+          accessible: bool(args, "step_free", true),
+          reason
+        });
+      }
+    },
+
+    {
       name: "propose_landmark",
       description:
-        "Propose a landmark the floor-plan extraction missed — a restroom, lift, entrance " +
-        "or destination someone found on the ground. Coordinates are in metres from the " +
-        "top-left of the plan; the gate rejects anything outside the building footprint.",
+        "Propose a landmark the floor-plan extraction missed — a restroom, lift, entrance or " +
+        "destination someone found on the ground. Name the room it is in and the page places " +
+        "it; there is no need to work out coordinates.",
       inputSchema: {
         type: "object",
         properties: {
@@ -508,89 +614,99 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           type: {
             type: "string",
             enum: ["entrance", "elevator", "stairs", "restroom", "destination"],
-            description: "Landmark type."
+            description: "What kind of place it is."
           },
-          x: { type: "number", description: "Metres from the left edge of the plan." },
-          z: { type: "number", description: "Metres from the top edge of the plan." },
+          in_room: {
+            type: "string",
+            description: "The room it sits in, by name. For example 'North corridor'."
+          },
           reason: { type: "string", description: "What the person observed." }
         },
-        required: ["label", "type", "x", "z", "reason"],
+        required: ["label", "type", "in_room", "reason"],
         additionalProperties: false
       },
       execute: (args) => {
+        const scene = context.getScene();
         const label = str(args, "label");
         const landmarkType = str(args, "type");
-        const x = num(args, "x");
-        const z = num(args, "z");
         const reason = str(args, "reason");
         const allowed = ["entrance", "elevator", "stairs", "restroom", "destination"];
 
-        if (!label) return fail("Pass a `label` for the landmark.");
+        if (!label) return fail("Give the landmark a name in `label`.");
         if (!allowed.includes(landmarkType)) {
           return fail(`\`type\` must be one of: ${allowed.join(", ")}.`);
         }
-        if (x === null || z === null) {
-          const scene = context.getScene();
+        if (!reason) {
+          return fail("Say what the person observed in `reason` — it is kept as provenance.");
+        }
+
+        const query = str(args, "in_room");
+        const room = resolveRoom(scene, query);
+        if (!room) {
+          recordCall("propose_landmark", args, "error", `unknown room "${query}"`);
           return fail(
-            `Pass numeric \`x\` and \`z\` in metres. This venue is ` +
-              `${scene.dimensions.width} m wide and ${scene.dimensions.depth} m deep.`
+            `No room in ${scene.name} matches "${query}". The rooms here are: ` +
+              `${scene.rooms.map((item) => `${item.label} (${item.id})`).join(", ")}.`
           );
         }
-        if (!reason) return fail("Pass what the person observed in `reason` — it is stored as provenance.");
 
         return submitMutation(context, "propose_landmark", args, {
           kind: "add-landmark",
           label,
           landmarkType: landmarkType as "entrance" | "elevator" | "stairs" | "restroom" | "destination",
-          position: [x, z],
+          position: roomCentroid(room.polygon),
           reason
         });
       }
     },
 
     {
-      name: "correct_label",
+      name: "propose_label_correction",
       description:
-        "Correct the name of a room, door or landmark that the vision model read wrongly " +
-        "from the floor plan. Queued for human approval like any other write.",
+        "Propose a corrected name for a room, doorway or landmark that the vision model read " +
+        "wrongly from the floor plan. Waits for human approval like every other change.",
       inputSchema: {
         type: "object",
         properties: {
-          entity_id: { type: "string", description: "The id of the room, door or landmark." },
+          entity: {
+            type: "string",
+            description: "The room, doorway or landmark to rename, by its current name or id."
+          },
           new_label: { type: "string", description: "The correct name." },
           reason: { type: "string", description: "How the person knows." }
         },
-        required: ["entity_id", "new_label", "reason"],
+        required: ["entity", "new_label", "reason"],
         additionalProperties: false
       },
       execute: (args) => {
         const scene = context.getScene();
-        const entityId = str(args, "entity_id");
+        const query = str(args, "entity");
         const label = str(args, "new_label");
         const reason = str(args, "reason");
-        if (!label) return fail("Pass the corrected name in `new_label`.");
-        if (!reason) return fail("Pass how the person knows in `reason` — it is stored as provenance.");
+        if (!label) return fail("Give the corrected name in `new_label`.");
+        if (!reason) return fail("Say how the person knows in `reason` — it is kept as provenance.");
 
-        const entityKind = scene.rooms.some((item) => item.id === entityId)
-          ? "room"
-          : scene.doors.some((item) => item.id === entityId)
-            ? "door"
-            : scene.landmarks.some((item) => item.id === entityId)
-              ? "landmark"
-              : null;
+        const room = resolveRoom(scene, query);
+        const door = room ? null : resolveDoor(scene, query);
+        const landmark = room || door ? null : resolveLandmark(scene, query);
+        const target = room ?? door ?? landmark;
 
-        if (!entityKind) {
-          recordCall("correct_label", args, "error", `unknown entity "${entityId}"`);
+        if (!target) {
+          recordCall("propose_label_correction", args, "error", `unknown entity "${query}"`);
           return fail(
-            `No room, door or landmark in ${scene.name} has id "${entityId}". ` +
-              `Use describe_room or list_destinations to get exact ids.`
+            `No room, doorway or landmark in ${scene.name} matches "${query}". ` +
+              `Use describe_room or list_destinations to see what is here.`
           );
         }
 
-        return submitMutation(context, "correct_label", args, {
+        let entityKind: "room" | "door" | "landmark" = "landmark";
+        if (room) entityKind = "room";
+        else if (door) entityKind = "door";
+
+        return submitMutation(context, "propose_label_correction", args, {
           kind: "relabel",
           entityKind,
-          entityId,
+          entityId: target.id,
           label,
           reason
         });

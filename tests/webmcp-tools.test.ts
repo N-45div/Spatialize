@@ -40,7 +40,7 @@ describe("tool registration contract", () => {
   it("registers every tool with a name, description and object schema", () => {
     const { tools } = harness(copyScene());
 
-    expect(tools.size).toBe(10);
+    expect(tools.size).toBe(11);
     for (const tool of tools.values()) {
       expect(tool.name).toMatch(/^[a-z_]+$/);
       expect(tool.description.length).toBeGreaterThan(40);
@@ -53,15 +53,40 @@ describe("tool registration contract", () => {
 
     expect(tools.get("find_step_free_route")?.annotations?.readOnlyHint).toBe(true);
     expect(tools.get("check_accessibility")?.annotations?.readOnlyHint).toBe(true);
-    expect(tools.get("report_access_change")?.annotations?.readOnlyHint).toBeUndefined();
+    expect(tools.get("propose_access_change")?.annotations?.readOnlyHint).toBeUndefined();
     expect(tools.get("propose_landmark")?.annotations?.readOnlyHint).toBeUndefined();
+  });
+
+  it("names every write tool so the verb matches what actually happens", () => {
+    const { tools } = harness(copyScene());
+    const writes = [...tools.values()].filter((tool) => !tool.annotations?.readOnlyHint);
+
+    // Nothing goes live on the agent's say-so, so nothing is named as if it did.
+    expect(writes).toHaveLength(4);
+    for (const tool of writes) expect(tool.name.startsWith("propose_")).toBe(true);
   });
 
   it("declares required arguments on every write tool", () => {
     const { tools } = harness(copyScene());
 
-    for (const name of ["report_access_change", "propose_landmark", "correct_label"]) {
+    for (const name of [
+      "propose_access_change",
+      "propose_doorway",
+      "propose_landmark",
+      "propose_label_correction"
+    ]) {
       expect(tools.get(name)?.inputSchema?.required).toContain("reason");
+    }
+  });
+
+  it("never asks the model to compute coordinates", () => {
+    const { tools } = harness(copyScene());
+
+    // Agents are poor at arithmetic; every write takes names, not metres.
+    for (const tool of tools.values()) {
+      const properties = Object.keys(tool.inputSchema?.properties ?? {});
+      expect(properties).not.toContain("x");
+      expect(properties).not.toContain("z");
     }
   });
 });
@@ -134,7 +159,7 @@ describe("write tools", () => {
     const { tools } = harness(scene);
 
     const text = textOf(
-      await call(tools, "report_access_change", {
+      await call(tools, "propose_access_change", {
         door: "Quiet-room doorway",
         step_free: false,
         reason: "there is a 15 cm step at this door now"
@@ -150,7 +175,7 @@ describe("write tools", () => {
   it("tells the reviewer what the change costs in plain terms", async () => {
     const { tools } = harness(copyScene());
 
-    await call(tools, "report_access_change", {
+    await call(tools, "propose_access_change", {
       door: "door-corridor-quiet",
       step_free: false,
       reason: "a step was installed"
@@ -159,29 +184,80 @@ describe("write tools", () => {
     expect(getAgentSession().proposals[0].impact.lostStepFree).toContain("Quiet room");
   });
 
-  it("hands an impossible write back as a structured, addressable refusal", async () => {
+  it("insists on provenance before accepting a report", async () => {
     const { tools } = harness(copyScene());
 
-    const result = await call(tools, "propose_landmark", {
-      label: "Rooftop bar",
-      type: "destination",
-      x: 900,
-      z: 900,
-      reason: "an agent invented this"
+    const result = await call(tools, "propose_access_change", {
+      door: "door-corridor-quiet",
+      step_free: false
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getAgentSession().proposals).toHaveLength(0);
+  });
+
+  it("places a proposed landmark inside the room it was named for", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "propose_landmark", {
+        label: "Accessible restroom",
+        type: "restroom",
+        in_room: "North corridor",
+        reason: "there is a restroom here the plan did not label"
+      })
+    );
+
+    expect(text).toContain("queued for human approval");
+    const added = getAgentSession().proposals[0].scene.landmarks.find(
+      (item) => item.label === "Accessible restroom"
+    );
+    // North corridor spans x 7..15, z 6.5..9.
+    expect(added!.position[0]).toBeGreaterThan(7);
+    expect(added!.position[0]).toBeLessThan(15);
+    expect(added!.position[1]).toBeGreaterThan(6.5);
+    expect(added!.position[1]).toBeLessThan(9);
+  });
+
+  it("accepts a doorway between two rooms that genuinely share a wall", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "propose_doorway", {
+        room_a: "North corridor",
+        room_b: "Staff service",
+        reason: "there is an unmarked door here"
+      })
+    );
+
+    expect(text).toContain("queued for human approval");
+    expect(getAgentSession().refusals).toHaveLength(0);
+  });
+
+  it("hands an impossible doorway back as a structured, addressable refusal", async () => {
+    const { tools } = harness(copyScene());
+
+    // The lobby and the quiet room are at opposite corners and share no wall.
+    const result = await call(tools, "propose_doorway", {
+      room_a: "Main lobby",
+      room_b: "Quiet room",
+      reason: "an agent assumed these connect"
     });
 
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("topology gate rejected");
+    expect(textOf(result)).toContain("not on the boundary");
     expect(getAgentSession().proposals).toHaveLength(0);
     expect(getAgentSession().refusals).toHaveLength(1);
   });
 
-  it("insists on provenance before accepting a report", async () => {
+  it("refuses a doorway from a room to itself", async () => {
     const { tools } = harness(copyScene());
 
-    const result = await call(tools, "report_access_change", {
-      door: "door-corridor-quiet",
-      step_free: false
+    const result = await call(tools, "propose_doorway", {
+      room_a: "Main lobby",
+      room_b: "Main lobby",
+      reason: "confused agent"
     });
 
     expect(result.isError).toBe(true);
@@ -191,14 +267,27 @@ describe("write tools", () => {
   it("refuses to relabel an entity that does not exist", async () => {
     const { tools } = harness(copyScene());
 
-    const result = await call(tools, "correct_label", {
-      entity_id: "not-a-real-id",
+    const result = await call(tools, "propose_label_correction", {
+      entity: "not-a-real-thing",
       new_label: "Anything",
       reason: "guessing"
     });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain("No room, door or landmark");
+    expect(textOf(result)).toContain("No room, doorway or landmark");
+  });
+
+  it("relabels a room found by its name rather than its id", async () => {
+    const { tools } = harness(copyScene());
+
+    await call(tools, "propose_label_correction", {
+      entity: "Quiet room",
+      new_label: "Sensory room",
+      reason: "the sign on the door says Sensory Room"
+    });
+
+    const proposal = getAgentSession().proposals[0];
+    expect(proposal.scene.rooms.find((item) => item.id === "quiet")?.label).toBe("Sensory room");
   });
 });
 
