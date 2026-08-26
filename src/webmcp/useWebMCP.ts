@@ -1,6 +1,16 @@
 /**
  * Registers the Spatialize tool surface with the browser's WebMCP agent host.
  *
+ * Each of the eleven tools in `./tools` is published with the standard call:
+ *
+ *   document.modelContext.registerTool({
+ *     name: "find_step_free_route",
+ *     description: "Compute a route between two places in this venue…",
+ *     inputSchema: { type: "object", properties: { … }, required: ["to"] },
+ *     annotations: { readOnlyHint: true },
+ *     execute: async (input) => { … }
+ *   }, { signal });
+ *
  * Tools are registered once per venue. Swapping in a different floor plan tears
  * the old set down through its AbortController and registers a fresh one, which
  * is what fires the browser's `toolchange` event — an agent that has been idle
@@ -52,9 +62,12 @@ export function useWebMCP(scene: SpatialScene, handlers: WebMCPHandlers): WebMCP
     const tools = buildTools(context);
 
     const register = async () => {
+      const modelContext = document.modelContext;
+      if (!modelContext) return;
+
       const registered: string[] = [];
       for (const tool of tools) {
-        await document.modelContext!.registerTool(tool, { signal: controller.signal });
+        await modelContext.registerTool(tool, { signal: controller.signal });
         if (controller.signal.aborted) return;
         registered.push(tool.name);
       }

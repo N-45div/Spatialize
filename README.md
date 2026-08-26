@@ -13,6 +13,46 @@ Built for the **Backblaze Generative Media Hackathon** with
 
 **Live app:** https://spatialize.onrender.com
 **Architecture deep-dive:** [ARCHITECTURE.md](ARCHITECTURE.md)
+**WebMCP agent surface:** [WEBMCP.md](WEBMCP.md)
+
+## Agent-native: eleven WebMCP tools
+
+> Built for the **OpenAI WebMCP Challenge**. Everything in `src/webmcp/` is new
+> work added after 25 August 2026; prior work ends at commit `04e9ad8`
+> (3 Aug 2026). Full breakdown in [WEBMCP.md](WEBMCP.md).
+
+This venue publishes itself to any agent in the browser via
+`document.modelContext`. Open the app in the ChatGPT app browser, or Chrome 149+
+with `chrome://flags/#enable-webmcp-testing`, and your agent can:
+
+- **Ask the building questions it can actually answer.** `find_step_free_route`
+  runs Dijkstra over the validated route graph, so a step-free route is
+  *computed*, never estimated. No venue can answer "can I reach the quiet room
+  without stairs?" today — Google Maps knows about entrances, not topology.
+- **Be told *why* you can't get somewhere.** When no step-free route exists the
+  tool names the exact door that blocks it, with its clear width, instead of
+  returning nothing.
+- **Fix the building's data by talking — and be refused when wrong.** Four
+  `propose_*` tools let a visitor report what they found on the ground. Every one
+  runs through the same deterministic topology validator that guards the rest of
+  the app, then waits for a person on the venue team. An impossible change comes
+  back with the exact rule and field path, so the agent can self-correct.
+
+| reads | proposes (gated + human-approved) |
+|---|---|
+| `get_venue_overview` · `list_destinations` · `find_step_free_route` · `describe_room` · `check_accessibility` · `list_data_issues` · `focus_view` | `propose_access_change` · `propose_doorway` · `propose_landmark` · `propose_label_correction` |
+
+The agent dock inside the 3D viewport shows registration state, a live feed of
+tool calls, the approval queue with each change's real-world impact, and gate
+refusals with their violations — plus the full published tool contract, so the
+surface can be read without opening the source.
+
+**Why it matters:** detailed venue accessibility data is sold today by human
+surveyors (AccessAble: ~70,000 venues, 30–60 min call each; standalone audits
+£3,000–£6,000), and it rots because updating it means filling in a form. WebMCP
+turns the update into a sentence spoken at the door — and the validator means
+quality goes up rather than down. See
+[WEBMCP.md](WEBMCP.md#why-this-problem-and-for-whom).
 
 ## Why this matters
 
@@ -71,7 +111,7 @@ ASSEMBLYAI_API_KEY                               # speech-to-text (needs B2 mode
 Tests:
 
 ```bash
-npm test                            # 8 frontend tests
+npm test                            # 53 frontend tests (45 added for WebMCP)
 cd backend && .venv/Scripts/python -m pytest    # 17 API/agent/gate tests
 ```
 
@@ -93,3 +133,6 @@ a keepalive GitHub Action that pings `/health` so the free instance stays warm.
 - Nothing publishes without passing schema + topology validation **and** human
   review; voice edits always re-flag the scene as `needs-review`.
 - Multi-page PDFs use page 1 only, and conversations are single-turn today.
+- Agent writes are proposals, never edits: they clear the topology gate *and* a
+  human before anything changes. Approvals currently update the browser session;
+  persisting them through the B2 run store is the next step, not a shipped one.
