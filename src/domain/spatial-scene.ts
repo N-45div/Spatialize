@@ -163,6 +163,13 @@ export const SpatialSceneSchema = SpatialSceneObjectSchema.superRefine((scene, c
     });
   });
 
+  scene.landmarks.forEach((landmark, index) => {
+    const [x, zValue] = landmark.position;
+    if (x < 0 || x > scene.dimensions.width || zValue < 0 || zValue > scene.dimensions.depth) {
+      addIssue(["landmarks", index, "position"], "Landmark is outside scene dimensions");
+    }
+  });
+
   scene.routeGraph.nodes.forEach((node, index) => {
     if (!rooms.has(node.roomId)) {
       addIssue(["routeGraph", "nodes", index, "roomId"], `Route node references unknown room "${node.roomId}"`);

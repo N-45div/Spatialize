@@ -61,6 +61,18 @@ describe("SpatialScene contract", () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues.some((issue) => issue.message.includes("does not pass through"))).toBe(true);
   });
+
+  it("rejects a landmark placed outside the declared physical bounds", () => {
+    const scene = copyScene();
+    scene.landmarks[0].position = [scene.dimensions.width + 5, 2];
+
+    const result = SpatialSceneSchema.safeParse(scene);
+
+    expect(result.success).toBe(false);
+    expect(
+      result.error?.issues.some((issue) => issue.message.includes("Landmark is outside scene dimensions"))
+    ).toBe(true);
+  });
 });
 
 describe("accessible route finding", () => {
