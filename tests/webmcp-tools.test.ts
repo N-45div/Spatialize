@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { sampleScene } from "../src/data/sample-scene";
 import type { SpatialScene } from "../src/domain/spatial-scene";
 import { clearAgentSession, getAgentSession } from "../src/webmcp/session";
-import { buildTools, type ToolContext } from "../src/webmcp/tools";
+import { buildTools, describeToolSurface, type ToolContext } from "../src/webmcp/tools";
 
 type Tool = ReturnType<typeof buildTools>[number];
 
@@ -87,6 +87,62 @@ describe("tool registration contract", () => {
       const properties = Object.keys(tool.inputSchema?.properties ?? {});
       expect(properties).not.toContain("x");
       expect(properties).not.toContain("z");
+    }
+  });
+});
+
+describe("context budgets", () => {
+  // Chrome's WebMCP guidance: names <=30 chars, tool descriptions <=500,
+  // parameter descriptions <=150, and a single tool result <=1.5K. Every tool
+  // we publish is context an agent has to carry, so this is a real cost.
+  const surface = () => describeToolSurface(sampleScene);
+
+  it("keeps tool names inside the 30-character budget", () => {
+    for (const tool of surface()) {
+      expect(tool.name.length, tool.name).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it("keeps tool descriptions inside the 500-character budget", () => {
+    const tools = buildTools({
+      getScene: () => sampleScene,
+      focusLandmark: () => undefined,
+      setViewMode: () => undefined
+    });
+    for (const tool of tools) {
+      expect(tool.description.length, tool.name).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it("keeps parameter descriptions inside the 150-character budget", () => {
+    const tools = buildTools({
+      getScene: () => sampleScene,
+      focusLandmark: () => undefined,
+      setViewMode: () => undefined
+    });
+    for (const tool of tools) {
+      const properties = (tool.inputSchema?.properties ?? {}) as Record<
+        string,
+        { description?: string }
+      >;
+      for (const [name, schema] of Object.entries(properties)) {
+        expect(schema.description?.length ?? 0, `${tool.name}.${name}`).toBeLessThanOrEqual(150);
+      }
+    }
+  });
+
+  it("keeps a single tool result inside the 1.5K-character budget", async () => {
+    const { tools } = harness(copyScene());
+    const results = await Promise.all([
+      call(tools, "get_venue_overview"),
+      call(tools, "check_accessibility"),
+      call(tools, "list_destinations"),
+      call(tools, "list_data_issues"),
+      call(tools, "find_step_free_route", { to: "quiet-mark" }),
+      call(tools, "describe_room", { room: "lobby" })
+    ]);
+    for (const result of results) {
+      expect(textOf(result).length).toBeLessThanOrEqual(1500);
     }
   });
 });
