@@ -1,0 +1,78 @@
+/**
+ * Registers the Spatialize tool surface with the browser's WebMCP agent host.
+ *
+ * Tools are registered once per venue. Swapping in a different floor plan tears
+ * the old set down through its AbortController and registers a fresh one, which
+ * is what fires the browser's `toolchange` event — an agent that has been idle
+ * on the page learns the venue changed underneath it.
+ */
+import { useEffect, useRef, useState } from "react";
+import type { SpatialScene } from "../domain/spatial-scene";
+import { buildTools, type ToolContext } from "./tools";
+import { webmcpSupported } from "./types";
+
+export interface WebMCPStatus {
+  supported: boolean;
+  registered: string[];
+  error: string | null;
+}
+
+interface WebMCPHandlers {
+  focusLandmark: (landmarkId: string) => void;
+  setViewMode: (mode: "2d" | "3d") => void;
+}
+
+export function useWebMCP(scene: SpatialScene, handlers: WebMCPHandlers): WebMCPStatus {
+  const [status, setStatus] = useState<WebMCPStatus>(() => ({
+    supported: webmcpSupported(),
+    registered: [],
+    error: null
+  }));
+
+  // Tools resolve these at call time, never at render time, so a re-render
+  // never needs to tear down and re-register the tool set.
+  const sceneRef = useRef(scene);
+  const handlersRef = useRef(handlers);
+
+  useEffect(() => {
+    sceneRef.current = scene;
+    handlersRef.current = handlers;
+  });
+
+  useEffect(() => {
+    if (!webmcpSupported()) return;
+
+    const controller = new AbortController();
+    const context: ToolContext = {
+      getScene: () => sceneRef.current,
+      focusLandmark: (id) => handlersRef.current.focusLandmark(id),
+      setViewMode: (mode) => handlersRef.current.setViewMode(mode)
+    };
+
+    const tools = buildTools(context);
+
+    const register = async () => {
+      const registered: string[] = [];
+      for (const tool of tools) {
+        await document.modelContext!.registerTool(tool, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        registered.push(tool.name);
+      }
+      setStatus({ supported: true, registered, error: null });
+    };
+
+    register().catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      setStatus({
+        supported: true,
+        registered: [],
+        error: error instanceof Error ? error.message : "Tool registration failed"
+      });
+    });
+
+    return () => controller.abort();
+    // Re-register only when the venue itself changes.
+  }, [scene.id]);
+
+  return status;
+}
