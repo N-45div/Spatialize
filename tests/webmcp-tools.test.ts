@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { sampleScene } from "../src/data/sample-scene";
 import type { SpatialScene } from "../src/domain/spatial-scene";
-import { clearAgentSession, getAgentSession } from "../src/webmcp/session";
+import { clearAgentSession, declineProposal, getAgentSession } from "../src/webmcp/session";
 import { buildTools, describeToolSurface, type ToolContext } from "../src/webmcp/tools";
 
 type Tool = ReturnType<typeof buildTools>[number];
@@ -40,7 +40,7 @@ describe("tool registration contract", () => {
   it("registers every tool with a name, description and object schema", () => {
     const { tools } = harness(copyScene());
 
-    expect(tools.size).toBe(11);
+    expect(tools.size).toBe(12);
     for (const tool of tools.values()) {
       expect(tool.name).toMatch(/^[a-z_]+$/);
       expect(tool.description.length).toBeGreaterThan(40);
@@ -222,7 +222,7 @@ describe("write tools", () => {
       })
     );
 
-    expect(text).toContain("queued for human approval");
+    expect(text).toContain("queued for human review");
     expect(getAgentSession().proposals).toHaveLength(1);
     // The live scene is untouched until a person approves.
     expect(scene.doors.find((item) => item.id === "door-corridor-quiet")?.accessible).toBe(true);
@@ -264,7 +264,7 @@ describe("write tools", () => {
       })
     );
 
-    expect(text).toContain("queued for human approval");
+    expect(text).toContain("queued for human review");
     const added = getAgentSession().proposals[0].scene.landmarks.find(
       (item) => item.label === "Accessible restroom"
     );
@@ -286,7 +286,7 @@ describe("write tools", () => {
       })
     );
 
-    expect(text).toContain("queued for human approval");
+    expect(text).toContain("queued for human review");
     expect(getAgentSession().refusals).toHaveLength(0);
   });
 
@@ -344,6 +344,83 @@ describe("write tools", () => {
 
     const proposal = getAgentSession().proposals[0];
     expect(proposal.scene.rooms.find((item) => item.id === "quiet")?.label).toBe("Sensory room");
+  });
+});
+
+describe("declined reports stay on the record", () => {
+  async function reportAndDecline(tools: Map<string, Tool>) {
+    await call(tools, "propose_access_change", {
+      door: "Quiet-room doorway",
+      step_free: false,
+      reason: "there is a 15 cm step here now"
+    });
+    const proposal = getAgentSession().proposals[0];
+    return declineProposal(proposal.id);
+  }
+
+  it("keeps a declined report as a dispute rather than deleting it", async () => {
+    const { tools } = harness(copyScene());
+
+    const dispute = await reportAndDecline(tools);
+
+    expect(dispute).not.toBeNull();
+    expect(getAgentSession().proposals).toHaveLength(0);
+    expect(getAgentSession().disputes).toHaveLength(1);
+    expect(getAgentSession().disputes[0].reason).toContain("15 cm step");
+  });
+
+  it("tells an agent about the disagreement, in both voices", async () => {
+    const { tools } = harness(copyScene());
+    await reportAndDecline(tools);
+
+    const text = textOf(await call(tools, "list_disputed_claims"));
+
+    expect(text).toContain("Quiet-room doorway");
+    expect(text).toContain("15 cm step");
+    expect(text).toContain("venue declined");
+  });
+
+  it("says plainly when nothing is disputed", async () => {
+    const { tools } = harness(copyScene());
+
+    expect(textOf(await call(tools, "list_disputed_claims"))).toContain("Nothing is in dispute");
+  });
+
+  it("flags outstanding disputes from the venue-wide audit", async () => {
+    const { tools } = harness(copyScene());
+    await reportAndDecline(tools);
+
+    expect(textOf(await call(tools, "check_accessibility"))).toContain("list_disputed_claims");
+  });
+});
+
+describe("measurements over verdicts", () => {
+  it("reports every doorway width, not only those under one threshold", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "check_accessibility"));
+
+    // A scooter user and a cane user disagree about what counts as passable,
+    // so the audit reports the number and leaves the judgement to the person.
+    for (const door of sampleScene.doors) {
+      expect(text).toContain(`${door.label}: ${door.width} m clear`);
+    }
+  });
+
+  it("headlines the narrowest doorway on a route", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "find_step_free_route", { to: "quiet-mark" }));
+
+    expect(text).toContain("Narrowest doorway on this route: 1.1 m clear");
+  });
+
+  it("states that the geometry was not verified against the building", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "find_step_free_route", { to: "quiet-mark" }));
+
+    expect(text).toContain("not verified against the building");
   });
 });
 

@@ -1178,3 +1178,15 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
   .refusal-card { animation: none; }
 }
 .route-stats b.blocked { color: #e08a7d; border-color: #5e3a36; }
+
+.dispute-card {
+  padding: 11px;
+  border: 1px solid #3d4f6b;
+  background: linear-gradient(100deg, #141a26, #0f1319);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+.dispute-card strong { display: block; font-size: 9.5px; line-height: 1.45; color: #c6d2e6; }
+.dispute-card small { display: block; font-size: 7.5px; margin-top: 5px; line-height: 1.5; }
+.dispute-reason { color: #93a3c0; font-style: italic; }
+.dispute-note { color: #6b7890; }

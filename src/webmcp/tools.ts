@@ -22,7 +22,7 @@ import {
   roomCentroid,
   sharedBoundaryPoint
 } from "./queries";
-import { queueProposal, recordCall, recordRefusal } from "./session";
+import { getAgentSession, queueProposal, recordCall, recordRefusal } from "./session";
 import type { ToolDefinition, ToolResult } from "./types";
 
 export interface ToolContext {
@@ -111,11 +111,13 @@ function submitMutation(
 
   recordCall(toolName, args, "queued", `Queued for review: ${description}`);
   return ok(
-    `Change passed the topology gate and is queued for human approval (${proposal.id}).\n` +
+    `This change is geometrically consistent with the rest of the plan, and is queued for ` +
+      `human review (${proposal.id}).\n` +
       `Proposed: ${description}\n` +
       `${impactLines.join(" ")}\n\n` +
-      `It is not live yet. Someone on the venue team approves or rejects it in the ` +
-      `Agent panel on this page.`
+      `The gate checked that the change does not contradict the plan. It cannot check whether ` +
+      `the report is true of the building — only a person can. If the venue declines it, the ` +
+      `report stays on the record as a disputed claim rather than being deleted.`
   );
 }
 
@@ -319,10 +321,19 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           "answered",
           `${target.label}: ${formatMetres(plan.totalDistance)}`
         );
+        const widths = plan.steps
+          .map((step) => step.doorWidth)
+          .filter((width): width is number => typeof width === "number");
+        const narrowest = widths.length ? Math.min(...widths) : null;
+
         return ok(
           `${stepFree ? "Step-free route" : "Route"} from ${origin} to ${target.label}: ` +
-            `${formatMetres(plan.totalDistance)} over ${plan.steps.length} segment(s).\n\n${steps}\n\n` +
-            `Computed from the validated floor-plan geometry, not estimated.`
+            `${formatMetres(plan.totalDistance)} over ${plan.steps.length} segment(s).` +
+            (narrowest ? ` Narrowest doorway on this route: ${narrowest} m clear.` : "") +
+            `\n\n${steps}\n\n` +
+            `Widths are given so the person can judge against their own equipment rather than ` +
+            `a single threshold. Computed from the floor plan's geometry, which is checked for ` +
+            `internal consistency — not verified against the building itself.`
         );
       }
     },
@@ -392,9 +403,14 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
               )
               .join("\n")
           : "- none";
-        const narrow = summary.narrowDoors.length
-          ? summary.narrowDoors.map((item) => `- ${item.label}: ${item.width} m clear width`).join("\n")
-          : "- none below 0.85 m";
+        // Every doorway width, not just the ones under one threshold. A scooter
+        // user and a cane user disagree about what counts as passable, so the
+        // measurement is reported and the judgement is left to the person.
+        const widths = [...scene.doors]
+          .sort((a, b) => a.width - b.width)
+          .map((door) => `- ${door.label}: ${door.width} m clear`)
+          .join("\n");
+        const disputes = getAgentSession().disputes.length;
 
         recordCall(
           "check_accessibility",
@@ -404,11 +420,14 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         );
         return ok(
           `Step-free audit for ${scene.name}\n\n` +
-            `Reachable step-free from the main entrance (${summary.reachable.length}):\n` +
+            `Reachable without steps from the main entrance (${summary.reachable.length}):\n` +
             `${summary.reachable.map((label) => `- ${label}`).join("\n") || "- none"}\n\n` +
-            `Not reachable step-free (${summary.blocked.length}):\n${blocked}\n\n` +
-            `Doors recorded as barriers: ${summary.inaccessibleDoors.join(", ") || "none"}\n\n` +
-            `Narrow doorways:\n${narrow}`
+            `Not reachable without steps (${summary.blocked.length}):\n${blocked}\n\n` +
+            `Doorway clear widths, narrowest first:\n${widths}\n\n` +
+            `Doors recorded as barriers: ${summary.inaccessibleDoors.join(", ") || "none"}.` +
+            (disputes ? ` ${disputes} declined visitor report(s) — call list_disputed_claims.` : "") +
+            `\n\n"Step-free" here means no steps on the route. It is not a judgement that the ` +
+            `route suits any particular person, so report the widths above rather than a verdict.`
         );
       }
     },
@@ -446,6 +465,34 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           `Review status: ${issues.reviewStatus}\n\n` +
             `Open validator issues:\n${openText}\n\n` +
             `Low-confidence extractions:\n${lowText}`
+        );
+      }
+    },
+
+    {
+      name: "list_disputed_claims",
+      description:
+        "List access reports the venue team declined to accept. Visitors are often a better " +
+        "source on a building than the building's own record, so declined reports are kept " +
+        "rather than deleted. Call this before telling someone a route is fine — the venue " +
+        "may say step-free where a visitor reported otherwise.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: readOnly,
+      execute: (args) => {
+        const { disputes } = getAgentSession();
+        if (!disputes.length) {
+          recordCall("list_disputed_claims", args, "answered", "no disputes");
+          return ok("No declined reports on this venue. Nothing is in dispute.");
+        }
+        const lines = disputes
+          .slice(0, 8)
+          .map((item) => `- ${item.description}\n  Visitor said: "${item.reason}" — venue declined this.`)
+          .join("\n");
+        recordCall("list_disputed_claims", args, "answered", `${disputes.length} disputed`);
+        return ok(
+          `${disputes.length} access report(s) the venue declined but which remain on the ` +
+            `record:\n${lines}\n\nThese are unresolved disagreements, not corrections. Tell the ` +
+            `person both sides and let them decide.`
         );
       }
     },

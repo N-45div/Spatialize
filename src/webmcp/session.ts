@@ -37,15 +37,34 @@ export interface Refusal {
   at: number;
 }
 
+/**
+ * A report the venue team declined to accept.
+ *
+ * It is kept, deliberately. Visitors are a more reliable source on a building
+ * than the building's own record — in the 2024 Euan's Guide survey, 77% of
+ * disabled respondents found venue-published access information misleading or
+ * wrong. A venue that could delete first-hand reports would be handing the
+ * least accurate party a veto over the most accurate one, so rejection here
+ * records a disagreement rather than erasing a claim.
+ */
+export interface Dispute {
+  id: string;
+  description: string;
+  reason: string;
+  reportedAt: number;
+  declinedAt: number;
+}
+
 export interface AgentSessionState {
   calls: ToolCall[];
   proposals: Proposal[];
   refusals: Refusal[];
+  disputes: Dispute[];
 }
 
 const MAX_CALLS = 40;
 
-let state: AgentSessionState = { calls: [], proposals: [], refusals: [] };
+let state: AgentSessionState = { calls: [], proposals: [], refusals: [], disputes: [] };
 const listeners = new Set<() => void>();
 let counter = 0;
 
@@ -99,6 +118,25 @@ export function resolveProposal(id: string) {
   publish({ ...state, proposals: state.proposals.filter((item) => item.id !== id) });
 }
 
+/** Decline a report without erasing it. The disagreement stays on the record. */
+export function declineProposal(id: string) {
+  const proposal = state.proposals.find((item) => item.id === id);
+  if (!proposal) return null;
+  const dispute: Dispute = {
+    id: nextId("dispute"),
+    description: proposal.description,
+    reason: proposal.reason,
+    reportedAt: proposal.at,
+    declinedAt: Date.now()
+  };
+  publish({
+    ...state,
+    proposals: state.proposals.filter((item) => item.id !== id),
+    disputes: [dispute, ...state.disputes]
+  });
+  return dispute;
+}
+
 export function findProposal(id: string) {
   return state.proposals.find((item) => item.id === id) ?? null;
 }
@@ -108,5 +146,5 @@ export function dismissRefusal(id: string) {
 }
 
 export function clearAgentSession() {
-  publish({ calls: [], proposals: [], refusals: [] });
+  publish({ calls: [], proposals: [], refusals: [], disputes: [] });
 }

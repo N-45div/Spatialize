@@ -15,7 +15,7 @@ Built for the **Backblaze Generative Media Hackathon** with
 **Architecture deep-dive:** [ARCHITECTURE.md](ARCHITECTURE.md)
 **WebMCP agent surface:** [WEBMCP.md](WEBMCP.md)
 
-## Agent-native: eleven WebMCP tools
+## Agent-native: twelve WebMCP tools
 
 > Built for the **OpenAI WebMCP Challenge**. Everything in `src/webmcp/` is new
 > work added after 25 August 2026; prior work ends at commit `04e9ad8`
@@ -37,10 +37,14 @@ with `chrome://flags/#enable-webmcp-testing`, and your agent can:
   runs through the same deterministic topology validator that guards the rest of
   the app, then waits for a person on the venue team. An impossible change comes
   back with the exact rule and field path, so the agent can self-correct.
+- **Disagree with the building, on the record.** A venue can decline a visitor's
+  report. It cannot delete one. Declined reports stay as disputed claims and
+  `list_disputed_claims` tells any agent both sides, because the venue is the
+  least reliable source on its own accessibility.
 
-| reads | proposes (gated + human-approved) |
+| reads | proposes (checked, then reviewed by a person) |
 |---|---|
-| `get_venue_overview` · `list_destinations` · `find_step_free_route` · `describe_room` · `check_accessibility` · `list_data_issues` · `focus_view` | `propose_access_change` · `propose_doorway` · `propose_landmark` · `propose_label_correction` |
+| `get_venue_overview` · `list_destinations` · `find_step_free_route` · `describe_room` · `check_accessibility` · `list_data_issues` · `list_disputed_claims` · `focus_view` | `propose_access_change` · `propose_doorway` · `propose_landmark` · `propose_label_correction` |
 
 The agent dock inside the 3D viewport shows registration state, a live feed of
 tool calls, the approval queue with each change's real-world impact, and gate
@@ -111,7 +115,7 @@ ASSEMBLYAI_API_KEY                               # speech-to-text (needs B2 mode
 Tests:
 
 ```bash
-npm test                            # 53 frontend tests (45 added for WebMCP)
+npm test                            # 67 frontend tests (59 added for WebMCP)
 cd backend && .venv/Scripts/python -m pytest    # 17 API/agent/gate tests
 ```
 
@@ -136,3 +140,10 @@ a keepalive GitHub Action that pings `/health` so the free instance stays warm.
 - Agent writes are proposals, never edits: they clear the topology gate *and* a
   human before anything changes. Approvals currently update the browser session;
   persisting them through the B2 run store is the next step, not a shipped one.
+- The gate checks that a change is consistent with the plan. It cannot check
+  whether a report is true of the building — only a person can, and the tools
+  say so in their own output rather than letting an agent assume otherwise.
+- A venue can decline a report but cannot delete it. Declined reports stay on
+  the record as disputed claims, because venue-published access information is
+  the least reliable source in the published survey data (77% of disabled
+  respondents found it misleading, Euan's Guide 2024, n=6,665).

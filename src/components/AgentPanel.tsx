@@ -147,6 +147,24 @@ export function AgentPanel({
             </>
           )}
 
+          {session.disputes.length > 0 && (
+            <>
+              <div className="section-label">
+                Declined, still on the record ({session.disputes.length})
+              </div>
+              {session.disputes.map((dispute) => (
+                <div className="dispute-card" key={dispute.id}>
+                  <strong>{dispute.description}</strong>
+                  <small className="dispute-reason">“{dispute.reason}”</small>
+                  <small className="dispute-note">
+                    The venue declined this. It is kept as a disagreement, not deleted, and any
+                    agent asking about this venue is told about it.
+                  </small>
+                </div>
+              ))}
+            </>
+          )}
+
           {session.calls.length > 0 && (
             <>
               <div className="section-label">Agent activity</div>

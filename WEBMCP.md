@@ -2,12 +2,12 @@
 
 **A building that answers your agent from geometry, and refuses it when it's wrong.**
 
-Spatialize publishes a venue's floor plan to any agent in the browser as eleven
-WebMCP tools. Read tools answer from validated geometry, so a step-free route is
-*computed*, never estimated. Write tools cannot touch the scene at all: every
-change an agent proposes is run through the same deterministic topology
-validator that guards the rest of the app, and then waits for a person on the
-venue team to approve it.
+Spatialize publishes a venue's floor plan to any agent in the browser as twelve
+WebMCP tools. Read tools answer from geometry, so a step-free route is *computed*,
+never estimated, and every doorway width is reported so the person applies their own
+threshold rather than ours. Write tools cannot touch the scene: a proposed change is
+checked against the plan's own topology rules and then waits for a person. If the
+venue declines it, the report is kept as a disputed claim rather than deleted.
 
 **Live app:** https://spatialize.onrender.com — open `#studio`
 **Requires:** the ChatGPT app browser, or Chrome 149+ with
@@ -46,12 +46,12 @@ typechecks, and passes its tests in isolation.
 | WebMCP browser typings | `src/webmcp/types.ts` | WebMCP ships no TypeScript definitions yet |
 | Route & accessibility engine | `src/webmcp/queries.ts` | Pathfinding, blocker detection, step-free audit, room geometry |
 | The agent write gate | `src/webmcp/gate.ts` | Validates proposals, diffs their real-world impact |
-| Tool surface (11 tools) | `src/webmcp/tools.ts` | The published contract |
+| Tool surface (12 tools) | `src/webmcp/tools.ts` | The published contract |
 | Registration hook | `src/webmcp/useWebMCP.ts` | Registers per venue, tears down via `AbortSignal` |
 | Agent session store | `src/webmcp/session.ts` | Tool-call log, approval queue, refusals |
 | Agent dock UI | `src/components/AgentPanel.tsx` | Watch the agent work, approve or reject its changes |
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
-| 45 new tests | `tests/webmcp-*.test.ts` (44), `spatial-scene.test.ts` (1) | Both gate paths, every tool, the contract itself |
+| 59 new tests | `tests/webmcp-*.test.ts` (58), `spatial-scene.test.ts` (1) | Both gate paths, every tool, the contract itself |
 
 ### What is unchanged prior work
 
@@ -110,7 +110,7 @@ success and a corrupted building.
 
 ## The tool surface
 
-Seven read tools (annotated `readOnlyHint`) and four write tools. Every write is
+Eight read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
 named `propose_*`, because nothing an agent does goes live by itself.
 
 | Tool | Kind | What it does |
@@ -119,8 +119,9 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `list_destinations` | reads | Routable places with ids and confidence |
 | `find_step_free_route` | reads | Turn-by-turn route, or the door that blocks it |
 | `describe_room` | reads | Area, category, neighbours, door widths, confidence |
-| `check_accessibility` | reads | Whole-venue step-free audit, barriers, narrow doorways |
+| `check_accessibility` | reads | Whole-venue step-free audit, every doorway width, open disputes |
 | `list_data_issues` | reads | Open validator issues and low-confidence extractions |
+| `list_disputed_claims` | reads | Reports the venue declined, kept on the record |
 | `focus_view` | reads | Moves the page's 3D view so a person sees what the agent found |
 | `propose_access_change` | proposes | A doorway became blocked, or was cleared |
 | `propose_doorway` | proposes | A doorway the plan missed, named by the two rooms it joins |
@@ -128,7 +129,7 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `propose_label_correction` | proposes | The vision model misread a name |
 
 The page publishes this contract to visitors too — the agent dock has a
-**"Show the 11 tools this page publishes"** panel listing every tool, its
+**"Show the 12 tools this page publishes"** panel listing every tool, its
 read/propose kind, and its typed parameters. You can read the surface without
 opening the source.
 
@@ -236,6 +237,60 @@ and decays, and accessibility data that is maintained by the people who
 encounter the building.
 
 ---
+
+## What the gate does and does not check
+
+The gate checks that a change is **internally consistent with the rest of the
+plan**: a doorway sits on the boundary of both rooms it joins, a landmark is
+inside the building, a route marked step-free does not run through a door marked
+blocked. It is deterministic, and it is why an agent cannot corrupt the venue's
+topology.
+
+**It cannot check whether a report is true of the building.** No software can.
+The best published agentic wheelchair-accessibility auditing scores about
+F1 0.60, and researchers working on this have been explicit that without a way
+to measure against the real thing there is no way to calculate that statistic at
+all. So "validated" here means *coherent*, never *verified on site* — and the
+tools say so in their own output rather than leaving an agent to assume.
+
+That distinction matters commercially as well as ethically. In January 2025 the
+FTC entered a $1M order against an accessibility-overlay vendor for
+"overstating a product's AI or other capabilities without adequate evidence".
+The American Foundation for the Blind calls the failure mode *automated
+inclusion*: once a system is automated, it becomes harder to challenge.
+
+## Why a declined report is kept
+
+A venue can decline any report. It cannot delete one.
+
+That is a deliberate inversion. In the 2024 Euan's Guide Access Survey
+(n=6,665), **77% of disabled respondents found venue-published access
+information misleading or inaccurate** — the venue is the least reliable source
+in the dataset. Giving it a veto over first-hand visitor accounts would hand the
+least accurate party authority over the most accurate one, which is close to the
+objection the National Federation of the Blind raised against overlay vendors:
+that they fail to acknowledge disabled people know what is accessible.
+
+So declining records a disagreement. `list_disputed_claims` reports both sides,
+and `check_accessibility` flags when disputes are outstanding. An agent asking
+about this venue is told what the venue says *and* what visitors said.
+
+## Measurements, not verdicts
+
+CHI 2025 (N=190) found scooter users judged 46% of barriers impassable against
+28% for cane users — manual and powered wheelchair users disagree significantly
+with each other. A single "accessible: yes/no" bit is therefore wrong for
+somebody by construction.
+
+`check_accessibility` reports every doorway's clear width, narrowest first, and
+`find_step_free_route` headlines the narrowest doorway on the route. The tools
+supply the number and leave the threshold to the person, because the threshold
+is theirs.
+
+For context on how unusual that is: Mappedin's live venue format expresses
+accessibility as a single bit in a 94-byte file, derived from the connection
+type rather than measured. IMDF cannot express clear width, gradient or
+turning circle at all.
 
 ## Honesty box
 

@@ -1,7 +1,7 @@
 /**
  * Registers the Spatialize tool surface with the browser's WebMCP agent host.
  *
- * Each of the eleven tools in `./tools` is published with the standard call:
+ * Each of the twelve tools in `./tools` is published with the standard call:
  *
  *   document.modelContext.registerTool({
  *     name: "find_step_free_route",

@@ -24,7 +24,7 @@ const TOUR_STORAGE_KEY = "spatialize-tour-done";
 import { routeToLandmark } from "./lib/routes";
 import { AgentPanel } from "./components/AgentPanel";
 import { useWebMCP } from "./webmcp/useWebMCP";
-import { recordCall, resolveProposal, type Proposal } from "./webmcp/session";
+import { declineProposal, recordCall, resolveProposal, type Proposal } from "./webmcp/session";
 import { planRoute } from "./webmcp/queries";
 
 type Conversation = {
@@ -206,9 +206,19 @@ export default function App() {
     recordCall("human_review", { proposal: proposal.id }, "answered", `Approved: ${proposal.description}`);
   }
 
+  /**
+   * Declining does not delete the report. Visitors are a better source on a
+   * building than the building's own record, so the disagreement is kept and
+   * an agent can read it back through list_disputed_claims.
+   */
   function rejectProposal(id: string) {
-    resolveProposal(id);
-    recordCall("human_review", { proposal: id }, "refused", "Rejected by the venue team");
+    const dispute = declineProposal(id);
+    recordCall(
+      "human_review",
+      { proposal: id },
+      "refused",
+      dispute ? `Declined, kept as disputed: ${dispute.description}` : "Declined by the venue team"
+    );
   }
 
   function downloadScene() {
