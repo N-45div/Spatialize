@@ -69,12 +69,33 @@ function clone(scene: SpatialScene): SpatialScene {
   return structuredClone(scene);
 }
 
+/**
+ * Free text written by a stranger, on its way into venue data that other
+ * agents will later read back. Newlines and control characters are what let
+ * injected text impersonate a new instruction block, so they are collapsed to
+ * spaces rather than preserved, and the result is capped.
+ *
+ * This is the code half of "validate strictly in code, loosely in schema". The
+ * other half is that a person on the venue team reads every one of these before
+ * it lands.
+ */
+export function sanitiseFreeText(value: string, maxLength: number): string {
+  const withoutControls = Array.from(value)
+    .map((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      const isControl = code < 0x20 || (code >= 0x7f && code <= 0x9f);
+      return isControl ? " " : character;
+    })
+    .join("");
+  return withoutControls.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
 /** Provenance stamp for anything an agent relayed on a person's behalf. */
 function agentEvidence(reason: string) {
   return {
     confidence: 0.6,
     method: "human" as const,
-    note: `Reported via agent: ${reason}`.slice(0, 240)
+    note: sanitiseFreeText(`Reported via agent: ${reason}`, 240)
   };
 }
 
@@ -131,7 +152,7 @@ function applyRelabel(draft: Draft, mutation: Extract<SceneMutation, { kind: "re
     (item) => item.id === mutation.entityId
   );
   if (!entity) return;
-  entity.label = mutation.label;
+  entity.label = sanitiseFreeText(mutation.label, 80);
   // Rooms and landmarks carry label evidence; the door schema has no slot for
   // it, so a door rename simply carries none rather than mis-stamping another.
   if ("label" in entity.evidence) {
@@ -142,7 +163,7 @@ function applyRelabel(draft: Draft, mutation: Extract<SceneMutation, { kind: "re
 function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-landmark" }>) {
   draft.landmarks.push({
     id: freeId(mutation.label, new Set(draft.landmarks.map((item) => item.id))),
-    label: mutation.label,
+    label: sanitiseFreeText(mutation.label, 80),
     type: mutation.landmarkType,
     position: mutation.position,
     confidence: 0.6,
@@ -156,7 +177,7 @@ function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind:
 function applyAddDoor(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-door" }>) {
   draft.doors.push({
     id: freeId(mutation.label, new Set(draft.doors.map((item) => item.id))),
-    label: mutation.label,
+    label: sanitiseFreeText(mutation.label, 80),
     position: mutation.position,
     width: mutation.width,
     rotation: 0,

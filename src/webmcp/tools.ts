@@ -154,7 +154,12 @@ export function describeToolSurface(scene: SpatialScene): ToolSummary[] {
 }
 
 export function buildTools(context: ToolContext): ToolDefinition[] {
-  const readOnly = { readOnlyHint: true } as const;
+  // Read tools echo venue-supplied names, and a name is user-generated content
+  // the moment someone's correction is approved. An agent reading a room label
+  // is reading text a stranger wrote, so the surface says so — that is what
+  // untrustedContentHint is for. Labels are also stripped of control characters
+  // and capped on the way in, and a person approves each one.
+  const readOnly = { readOnlyHint: true, untrustedContentHint: true } as const;
 
   return [
     {
