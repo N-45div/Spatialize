@@ -142,7 +142,7 @@ def extracted_run(client: TestClient) -> dict[str, Any]:
     return response.json()
 
 
-def test_ask_with_text_mutates_scene_and_returns_audio(tmp_path: Path) -> None:
+def test_ask_with_text_files_a_proposal_and_returns_audio(tmp_path: Path) -> None:
     with voice_client(tmp_path) as client:
         run = extracted_run(client)
 
@@ -152,14 +152,20 @@ def test_ask_with_text_mutates_scene_and_returns_audio(tmp_path: Path) -> None:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["sceneChanged"] is True
-        assert body["sceneVersion"] == 2
+        # A voice edit is a proposal like any other agent write: nothing is
+        # live until a person approves it.
+        assert body["sceneChanged"] is False
+        assert body["sceneVersion"] == 1
         assert body["mutations"][0]["kind"] == "add-landmark"
+        assert body["proposals"][0]["status"] == "pending"
+        assert body["proposals"][0]["description"].startswith('Add destination "Cafe"')
         assert body["audio"]["manifestHash"] == "hash-tts"
 
         scene = client.get(f"/api/runs/{run['runId']}/scene").json()
-        assert any(item["label"] == "Cafe" for item in scene["landmarks"])
-        assert scene["review"]["status"] == "needs-review"
+        assert all(item["label"] != "Cafe" for item in scene["landmarks"])
+        ledger = client.get(f"/api/runs/{run['runId']}/review").json()
+        assert [item["status"] for item in ledger["proposals"]] == ["pending"]
+        assert ledger["proposals"][0]["reason"] == "add a cafe in the gallery"
 
         audio = client.get(body["audio"]["url"])
         assert audio.status_code == 200
@@ -246,17 +252,25 @@ def test_demo_runs_are_isolated_and_ready_to_ask(tmp_path: Path) -> None:
 
         answer = client.post(f"/api/runs/{first['runId']}/ask", data={"text": "add a cafe"})
         assert answer.status_code == 200
-        assert answer.json()["sceneChanged"] is True
+        assert answer.json()["proposals"][0]["status"] == "pending"
+        assert client.get(f"/api/runs/{second['runId']}/review").json()["proposals"] == []
 
         # The other visitor's demo copy is untouched by the first one's edit.
         other_scene = client.get(f"/api/runs/{second['runId']}/scene").json()
         assert all(item["label"] != "Cafe" for item in other_scene["landmarks"])
 
 
-def test_voice_edit_survives_approval_flow(tmp_path: Path) -> None:
+def test_voice_edit_goes_through_review_then_publication(tmp_path: Path) -> None:
     with voice_client(tmp_path) as client:
         run = extracted_run(client)
-        client.post(f"/api/runs/{run['runId']}/ask", data={"text": "add a cafe"})
+        asked = client.post(f"/api/runs/{run['runId']}/ask", data={"text": "add a cafe"}).json()
+        proposal_id = asked["proposals"][0]["id"]
+
+        # The venue accepts the report: it lands on the working scene and the
+        # run asks for a deliberate publish step, naming the change.
+        accepted = client.post(f"/api/runs/{run['runId']}/proposals/{proposal_id}/approve")
+        assert accepted.status_code == 200
+        assert any(item["label"] == "Cafe" for item in accepted.json()["scene"]["landmarks"])
 
         blocked = client.post(
             f"/api/runs/{run['runId']}/approve", json={"resolved_issue_ids": []}
@@ -265,7 +279,7 @@ def test_voice_edit_survives_approval_flow(tmp_path: Path) -> None:
 
         approved = client.post(
             f"/api/runs/{run['runId']}/approve",
-            json={"resolved_issue_ids": ["confirm-door"]},
+            json={"resolved_issue_ids": ["confirm-door", f"proposal-{proposal_id}"]},
         )
         assert approved.status_code == 200
         scene = client.get(f"/api/runs/{run['runId']}/scene").json()

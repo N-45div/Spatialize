@@ -39,6 +39,8 @@ export interface AskResponse {
     voice?: string;
   } | null;
   mutations: { kind: string; summary: string; entity_id: string }[];
+  /** Voice edits are filed as proposals; these are the ones the server took. */
+  proposals?: { id: string; description: string; status: string; impact: AccessibilityImpact }[];
   sceneVersion?: number;
   sceneChanged?: boolean;
   message?: string;

@@ -407,13 +407,33 @@ def create_app(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
             ) from error
 
-        scene_version = record.scene_version
-        if session.mutations:
+        # A voice edit is an agent write like any other. It is filed as a
+        # proposal — the server applies it to its own scene, a person decides —
+        # rather than written straight into a new scene version.
+        proposals: list[dict] = []
+        for mutation in session.mutations:
+            if not mutation.proposal:
+                continue
             try:
-                record = service.save_scene_version(record, session.scene)
-                scene_version = record.scene_version
-            except Exception:
-                warnings.append("scene-version-not-saved")
+                proposal = review.propose(
+                    record,
+                    ProposalRequest(
+                        id=f"voice_{uuid4().hex[:12]}",
+                        mutation=mutation.proposal,
+                        base_scene_version=record.scene_version,
+                    ),
+                )
+            except (SceneRejected, ProposalConflict) as error:
+                warnings.append(f"proposal-refused: {error}")
+                continue
+            proposals.append(
+                {
+                    "id": proposal.id,
+                    "description": proposal.description,
+                    "status": proposal.status,
+                    "impact": json.loads(proposal.impact.model_dump_json(by_alias=True)),
+                }
+            )
 
         audio_payload = narration_payload(record, script, warnings)
 
@@ -423,9 +443,13 @@ def create_app(
             "transcript": transcript_payload,
             "answer": {"script": script},
             "audio": audio_payload,
-            "mutations": [asdict(mutation) for mutation in session.mutations],
-            "sceneVersion": scene_version,
-            "sceneChanged": bool(session.mutations),
+            "mutations": [
+                {"kind": m.kind, "summary": m.summary, "entity_id": m.entity_id}
+                for m in session.mutations
+            ],
+            "proposals": proposals,
+            "sceneVersion": record.scene_version,
+            "sceneChanged": False,
             "warnings": warnings,
         }
 

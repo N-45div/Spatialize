@@ -53,7 +53,16 @@ export type SceneMutation =
       width: number;
       accessible: boolean;
       reason: string;
-    };
+    }
+  | {
+      kind: "set-room-category";
+      roomId: string;
+      category: "public" | "service" | "circulation" | "restricted";
+      reason: string;
+    }
+  | { kind: "add-review-note"; entityId: string; message: string; reason: string };
+
+export const NOTE_LIMIT = 300;
 
 export interface GateViolation {
   path: string;
@@ -107,6 +116,9 @@ export function sanitiseMutation(mutation: SceneMutation): SceneMutation {
   const reason = sanitiseFreeText(mutation.reason, REASON_LIMIT);
   if ("label" in mutation) {
     return { ...mutation, reason, label: sanitiseFreeText(mutation.label, LABEL_LIMIT) };
+  }
+  if ("message" in mutation) {
+    return { ...mutation, reason, message: sanitiseFreeText(mutation.message, NOTE_LIMIT) };
   }
   return { ...mutation, reason };
 }
@@ -226,6 +238,22 @@ function applyAddDoor(draft: Draft, mutation: Extract<SceneMutation, { kind: "ad
   });
 }
 
+function applyRoomCategory(
+  draft: Draft,
+  mutation: Extract<SceneMutation, { kind: "set-room-category" }>
+) {
+  const room = draft.rooms.find((item) => item.id === mutation.roomId);
+  if (room) room.category = mutation.category;
+}
+
+function applyReviewNote(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-review-note" }>) {
+  draft.review.issues.push({
+    id: `note-${draft.review.issues.length + 1}-${slugify(mutation.entityId)}`,
+    message: sanitiseFreeText(mutation.message, NOTE_LIMIT),
+    severity: "medium"
+  });
+}
+
 /**
  * Produce the candidate scene for a mutation. This is deliberately allowed to
  * build an *invalid* scene — judging that is the gate's job, not ours.
@@ -248,6 +276,12 @@ function applyMutation(scene: SpatialScene, mutation: SceneMutation): unknown {
       break;
     case "add-door":
       applyAddDoor(draft, mutation);
+      break;
+    case "set-room-category":
+      applyRoomCategory(draft, mutation);
+      break;
+    case "add-review-note":
+      applyReviewNote(draft, mutation);
       break;
   }
 
@@ -337,6 +371,16 @@ export function describeMutation(scene: SpatialScene, mutation: SceneMutation): 
         `Add ${mutation.accessible ? "step-free " : ""}doorway "${cleanLabel}" between ` +
         `${roomLabel(mutation.connects[0])} and ${roomLabel(mutation.connects[1])}`
       );
+    }
+    case "set-room-category": {
+      const room = scene.rooms.find((item) => item.id === mutation.roomId)?.label ?? mutation.roomId;
+      return `Set "${room}" to ${mutation.category}`;
+    }
+    case "add-review-note": {
+      const target =
+        [...scene.rooms, ...scene.doors, ...scene.landmarks].find((item) => item.id === mutation.entityId)
+          ?.label ?? mutation.entityId;
+      return `Flag "${target}" for review: ${sanitiseFreeText(mutation.message, NOTE_LIMIT).slice(0, 60)}`;
     }
     default:
       return "Unknown change";

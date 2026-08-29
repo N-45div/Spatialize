@@ -442,6 +442,10 @@ export default function App() {
       }
       void reloadScene(ingestionRun.runId);
     }
+    if (response.proposals?.length && ingestionRun) {
+      // The voice edit was filed on the venue record; show it in the queue.
+      void fetchReview(ingestionRun.runId).then(hydrateAgentSession).catch(() => undefined);
+    }
     if (audioUrl) {
       setAskStage("speaking");
       setAskVoice(response.audio?.voice ?? null);

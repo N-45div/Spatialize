@@ -37,6 +37,9 @@ class Mutation:
     kind: str
     summary: str
     entity_id: str
+    # The same shape the WebMCP tools send, so a voice edit is filed through
+    # the same review ledger as an agent proposal rather than written directly.
+    proposal: dict[str, Any] | None = None
 
 
 @dataclass
@@ -321,12 +324,23 @@ class SceneSession:
                 "add_review_note instead."
             ) from error
         draft["review"]["status"] = "needs-review"
+        # The draft is kept so the agent's own later reads in this turn see the
+        # change; what is *filed* is the proposal, decided by a person.
         self.scene = draft
         self.mutations.append(mutation)
-        return {"committed": True, "change": mutation.summary, "pendingHumanReview": True}
+        return {
+            "committed": True,
+            "queued": True,
+            "change": mutation.summary,
+            "pendingHumanReview": True,
+            "note": "Queued for the venue team. Nothing is live until a person approves it.",
+        }
+
+    def _quote(self) -> str:
+        return (self.spoken_quote or "voice edit")[:240]
 
     def _human_evidence(self) -> dict[str, Any]:
-        note = (self.spoken_quote or "voice edit")[:240]
+        note = self._quote()
         stamp = {"confidence": 0.9, "method": "human", "note": note}
         return {"label": dict(stamp), "geometry": dict(stamp)}
 
@@ -426,7 +440,18 @@ class SceneSession:
             )
         result = self._commit(
             draft,
-            Mutation("add-landmark", f"Added {landmark_type} '{label}' in {room['label']}", new_id),
+            Mutation(
+                "add-landmark",
+                f"Added {landmark_type} '{label}' in {room['label']}",
+                new_id,
+                proposal={
+                    "kind": "add-landmark",
+                    "label": label,
+                    "landmarkType": landmark_type,
+                    "position": list(position),
+                    "reason": self._quote(),
+                },
+            ),
         )
         result["landmarkId"] = new_id
         return result
@@ -435,14 +460,30 @@ class SceneSession:
         if not new_label.strip():
             raise ToolError("The new label is empty")
         draft = copy.deepcopy(self.scene)
-        for collection in (draft["rooms"], draft["doors"], draft["landmarks"]):
+        collections = (
+            ("room", draft["rooms"]),
+            ("door", draft["doors"]),
+            ("landmark", draft["landmarks"]),
+        )
+        for entity_kind, collection in collections:
             for entity in collection:
                 if entity["id"] == entity_id:
                     old = entity["label"]
                     entity["label"] = new_label.strip()
                     return self._commit(
                         draft,
-                        Mutation("rename", f"Renamed '{old}' to '{new_label.strip()}'", entity_id),
+                        Mutation(
+                            "rename",
+                            f"Renamed '{old}' to '{new_label.strip()}'",
+                            entity_id,
+                            proposal={
+                                "kind": "relabel",
+                                "entityKind": entity_kind,
+                                "entityId": entity_id,
+                                "label": new_label.strip(),
+                                "reason": self._quote(),
+                            },
+                        ),
                     )
         raise ToolError(f"No entity '{entity_id}' in the scene")
 
@@ -465,6 +506,13 @@ class SceneSession:
                 "door-accessibility",
                 f"Marked door '{door['label']}' {'accessible' if accessible else 'not accessible'}",
                 door_id,
+                proposal={
+                    "kind": "set-door-accessible",
+                    "doorId": door_id,
+                    "accessible": accessible,
+                    "reason": self._quote(),
+                    "cascade": True,
+                },
             ),
         )
         # Surface any destination that just lost its only step-free route.
@@ -500,7 +548,17 @@ class SceneSession:
         room["category"] = category
         return self._commit(
             draft,
-            Mutation("room-category", f"Set {room['label']} to {category}", room_id),
+            Mutation(
+                "room-category",
+                f"Set {room['label']} to {category}",
+                room_id,
+                proposal={
+                    "kind": "set-room-category",
+                    "roomId": room_id,
+                    "category": category,
+                    "reason": self._quote(),
+                },
+            ),
         )
 
     def add_review_note(self, entity_id: str, message: str) -> dict[str, Any]:
@@ -510,5 +568,16 @@ class SceneSession:
             {"id": issue_id, "message": message[:300], "severity": "medium"}
         )
         return self._commit(
-            draft, Mutation("review-note", f"Flagged for review: {message[:80]}", entity_id)
+            draft,
+            Mutation(
+                "review-note",
+                f"Flagged for review: {message[:80]}",
+                entity_id,
+                proposal={
+                    "kind": "add-review-note",
+                    "entityId": entity_id,
+                    "message": message[:300],
+                    "reason": self._quote(),
+                },
+            ),
         )

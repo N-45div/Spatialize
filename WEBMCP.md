@@ -400,9 +400,10 @@ turning circle at all.
 - The venue role is a shared token in a header, not accounts. A reviewer
   arrives once with `?venue=<token>` and the browser keeps it; unset for the
   open demo, so anyone can approve or decline there.
-- The voice path (`/ask`) still writes scene versions directly, as it did
-  before this work, without a proposal or a ledger entry. The agent path is the
-  one gated here; folding voice edits into the same queue is the next step.
+- The voice path (`/ask`) files its edits as proposals through the same ledger
+  as the WebMCP tools. It used to write scene versions directly; it no longer
+  does. A spoken *"mark the gallery door inaccessible"* now lands in the same
+  queue, with the spoken sentence as its provenance, and a person decides.
 - Server-side impact matches the client's rule for a landmark without its own
   route node (nearest node). A landmark an agent proposes has no node of its
   own, so this parity is what keeps the two from disagreeing about it.

@@ -37,6 +37,8 @@ LABEL_LIMIT = 80
 REASON_LIMIT = 240
 LANDMARK_TYPES = ("entrance", "elevator", "stairs", "restroom", "destination")
 ENTITY_KINDS = ("room", "door", "landmark")
+ROOM_CATEGORIES = ("public", "service", "circulation", "restricted")
+NOTE_LIMIT = 300
 
 
 def sanitise_free_text(value: str, limit: int) -> str:
@@ -274,6 +276,34 @@ def apply_mutation(scene: dict[str, Any], mutation: dict[str, Any]) -> tuple[dic
         return draft, (
             f'Add {prefix}doorway "{label}" between {room_label(connects[0])} and {room_label(connects[1])}'
         )
+
+    if kind == "set-room-category":
+        room = rooms.get(str(mutation.get("roomId")))
+        if room is None:
+            raise MutationRejected(f'Unknown room "{mutation.get("roomId")}"')
+        category = mutation.get("category")
+        if category not in ROOM_CATEGORIES:
+            raise MutationRejected(f"`category` must be one of {', '.join(ROOM_CATEGORIES)}")
+        room["category"] = category
+        return draft, f'Set "{room["label"]}" to {category}'
+
+    if kind == "add-review-note":
+        entity_id = str(mutation.get("entityId"))
+        target = rooms.get(entity_id) or doors.get(entity_id) or landmarks.get(entity_id)
+        if target is None:
+            raise MutationRejected(f'Unknown entity "{entity_id}"')
+        message = sanitise_free_text(str(mutation.get("message") or ""), NOTE_LIMIT)
+        if not message:
+            raise MutationRejected("A message is required")
+        issues = draft["review"]["issues"]
+        issues.append(
+            {
+                "id": f"note-{len(issues) + 1}-{_slugify(entity_id)}",
+                "message": message,
+                "severity": "medium",
+            }
+        )
+        return draft, f'Flag "{target["label"]}" for review: {message[:60]}'
 
     raise MutationRejected(f"Unknown mutation kind {kind!r}")
 

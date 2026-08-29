@@ -213,16 +213,16 @@ class GeminiVoiceAgent:
             if session.mutations:
                 applied = "; ".join(m.summary for m in session.mutations)
                 return (
-                    f"I ran out of thinking budget, but these changes were applied: {applied}. "
-                    "They are marked for human review."
+                    f"I ran out of thinking budget, but these changes were queued for the "
+                    f"venue team: {applied}. Nothing is live until a person approves it."
                 )
             return "I could not finish working that out. Please try a simpler question."
         except Exception as error:  # provider quota/availability failures
             if session.mutations:
                 applied = "; ".join(m.summary for m in session.mutations)
                 return (
-                    f"The model provider interrupted me, but these changes were applied: "
-                    f"{applied}. They are marked for human review."
+                    f"The model provider interrupted me, but these changes were queued for "
+                    f"the venue team: {applied}. Nothing is live until a person approves it."
                 )
             raise AgentUnavailable(
                 "The voice agent is temporarily rate-limited by its model provider. "
