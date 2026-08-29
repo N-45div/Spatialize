@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     b2_bucket: str | None = Field(None, validation_alias="B2_BUCKET")
     b2_region: str | None = Field(None, validation_alias="B2_REGION")
 
+    # Comma-separated browser origins allowed to call the API. "*" for local
+    # development; the deployed frontend's origin in production.
+    allowed_origins: str = Field(
+        "*", validation_alias=AliasChoices("SPATIALIZE_ALLOWED_ORIGINS", "allowed_origins")
+    )
+
     # When set, approving or declining a proposal requires this value in the
     # X-Venue-Token header. Unset means an open demo where anyone reviews.
     venue_token: str | None = Field(

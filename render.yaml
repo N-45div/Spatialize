@@ -26,3 +26,5 @@ services:
         value: google/gemini-3.6-flash
       - key: SPATIALIZE_STT_MODEL
         value: universal-3-5-pro
+      - key: SPATIALIZE_ALLOWED_ORIGINS
+        sync: false

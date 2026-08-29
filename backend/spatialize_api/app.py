@@ -86,9 +86,10 @@ def create_app(
     active_agent = voice_agent or _default_agent(active_settings)
 
     app = FastAPI(title="Spatialize API", version="0.2.0")
+    origins = [item.strip() for item in active_settings.allowed_origins.split(",") if item.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins or ["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
