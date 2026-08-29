@@ -1195,3 +1195,10 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .proposal-persist.saved { color: #6fae95; }
 .proposal-persist.saving { color: #b9a880; }
 .proposal-persist.failed { color: #e08a7d; }
+
+.route-words { margin-top: 18px; }
+.route-words ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.route-words li { display: grid; grid-template-columns: 18px 1fr; gap: 9px; font-size: 9.5px; line-height: 1.5; color: #b3c3bc; }
+.route-words li > span { font: 7px "DM Mono"; color: #6e8179; padding-top: 2px; }
+.route-words small { display: block; font: 7px "DM Mono"; color: #52655d; margin-top: 2px; }
+.route-words-note { margin: 8px 0 0; font-size: 9px; color: #e0a79d; }

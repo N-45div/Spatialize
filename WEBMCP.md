@@ -2,7 +2,7 @@
 
 **A building that answers your agent from geometry, and refuses it when it's wrong.**
 
-Spatialize publishes a venue's floor plan to any agent in the browser as thirteen
+Spatialize publishes a venue's floor plan to any agent in the browser as fourteen
 WebMCP tools. Read tools answer from geometry, so a step-free route is *computed*,
 never estimated, and every doorway width is reported so the person applies their own
 threshold rather than ours. Write tools cannot touch the scene: a proposed change is
@@ -49,14 +49,14 @@ tests in isolation.
 | WebMCP browser typings | `src/webmcp/types.ts` | WebMCP ships no TypeScript definitions yet |
 | Route & accessibility engine | `src/webmcp/queries.ts` | Pathfinding, blocker detection, step-free audit, room geometry |
 | The agent write gate | `src/webmcp/gate.ts` | Validates proposals, diffs their real-world impact |
-| Tool surface (13 tools) | `src/webmcp/tools.ts` | The published contract |
+| Tool surface (14 tools) | `src/webmcp/tools.ts` | The published contract |
 | Registration hook | `src/webmcp/useWebMCP.ts` | Registers per venue, tears down via `AbortSignal` |
 | Agent session store | `src/webmcp/session.ts` | Tool-call log, approval queue, refusals |
 | Agent dock UI | `src/components/AgentPanel.tsx` | Watch the agent work, approve or reject its changes |
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
 | Review ledger (server) | `backend/spatialize_api/review.py` | Proposals, decisions and audit persisted; the gate that counts |
 | Review sync (client) | `src/webmcp/session.ts`, `src/lib/api.ts` | Hydrate from the ledger, post proposals, decide through the server |
-| 105 new tests | `tests/webmcp-*.test.ts` (85), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (19) | Both gate paths, every tool, the contract, persistence across processes |
+| 111 new tests | `tests/webmcp-*.test.ts` (88), `tests/e2e` (1), `tests/evals` (2), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (19) | Both gate paths, every tool, the contract, persistence, the whole loop through the real API |
 
 ### What is unchanged prior work
 
@@ -131,11 +131,42 @@ That last paragraph is deliberate. The scene model does not hold turning
 circles, threshold heights or gradients, so the tool does not claim a
 wheelchair fits. It claims exactly what the data supports.
 
+**5. Ask what a closure would cost, before it happens.**
+`simulate_closure` takes a doorway or a lift and answers which destinations
+would stop being reachable without steps — *"If "Elevator" were out of use: 2
+destinations would lose step-free access from the main entrance — Elevator,
+Quiet room."* No button on any venue site does this. It is the question an
+access manager has to answer before every planned works notice, and it changes
+nothing: nothing is proposed or recorded.
+
+**6. Know how old the answer is.**
+Every clearance check ends with a freshness line: *"Quiet-room doorway: last
+confirmed by a visitor today; Gallery threshold: never confirmed by a visitor
+since the plan was read 29 days ago."* Accessibility data rots because nobody
+says how old it is. Here the age is said out loud, and a report the venue
+accepted is the freshest word on the doorways it touched.
+
+## Proof
+
+Three kinds of evidence, all in `tests/` and all run by `npm test`; the
+numbers are in [EVALS.md](EVALS.md).
+
+- **Deterministic journeys** — eight things a person wants, twelve tool calls in
+  total, zero unauthorised mutations of the scene, every result inside the
+  1.5K budget.
+- **Tool selection by a model** — `google/gemini-3.6-flash`, given only the
+  contract, chose the right tool for **20 of 20** things a person might say and
+  the right arguments for **12 of 12** where the prompt implied one.
+- **End to end through the real backend** — the backend is spawned, a visitor's
+  agent asks and reports, the server applies and stores, the venue declines,
+  the tab is wiped and hydrated, and a later agent hears both sides. About five
+  seconds, every run.
+
 ---
 
 ## The tool surface
 
-Nine read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
+Ten read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
 named `propose_*`, because nothing an agent does goes live by itself.
 
 | Tool | Kind | What it does |
@@ -147,7 +178,8 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `check_accessibility` | reads | Whole-venue step-free audit, every doorway width, open disputes |
 | `list_data_issues` | reads | Open validator issues and low-confidence extractions |
 | `list_disputed_claims` | reads | Reports the venue declined, kept on the record |
-| `check_route_clearance` | reads | One route against one person's width and step needs: clear, blocked or unknown |
+| `check_route_clearance` | reads | One route against one person's width and step needs: clear, blocked or unknown, with freshness |
+| `simulate_closure` | reads | What-if: a doorway closed or a lift out of use — which destinations lose step-free access |
 | `focus_view` | reads | Moves the page's 3D view so a person sees what the agent found |
 | `propose_access_change` | proposes | A doorway became blocked, or was cleared |
 | `propose_doorway` | proposes | A doorway the plan missed, named by the two rooms it joins |
@@ -155,7 +187,7 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `propose_label_correction` | proposes | The vision model misread a name |
 
 The page publishes this contract to visitors too — the agent dock has a
-**"Show the 13 tools this page publishes"** panel listing every tool, its
+**"Show the 14 tools this page publishes"** panel listing every tool, its
 read/propose kind, and its typed parameters. You can read the surface without
 opening the source.
 

@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { sampleScene } from "../src/data/sample-scene";
 import type { SpatialScene } from "../src/domain/spatial-scene";
-import { clearAgentSession, declineProposal, getAgentSession } from "../src/webmcp/session";
+import {
+  clearAgentSession,
+  declineProposal,
+  getAgentSession,
+  hydrateAgentSession
+} from "../src/webmcp/session";
 import { buildTools, describeToolSurface, type ToolContext } from "../src/webmcp/tools";
 
 type Tool = ReturnType<typeof buildTools>[number];
@@ -40,7 +45,7 @@ describe("tool registration contract", () => {
   it("registers every tool with a name, description and object schema", () => {
     const { tools } = harness(copyScene());
 
-    expect(tools.size).toBe(13);
+    expect(tools.size).toBe(14);
     for (const tool of tools.values()) {
       expect(tool.name).toMatch(/^[a-z_]+$/);
       expect(tool.description.length).toBeGreaterThan(40);
@@ -587,6 +592,58 @@ describe("what the review found", () => {
     for (const name of ["propose_access_change", "propose_doorway", "propose_landmark", "propose_label_correction"]) {
       expect(tools.get(name)?.annotations?.untrustedContentHint).toBe(true);
     }
+  });
+});
+
+describe("what-if and freshness", () => {
+  it("simulates a lift out of use without proposing anything", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "simulate_closure", { landmark: "Elevator" }));
+
+    // The quiet room is only reachable through the corridor node the lift sits on.
+    expect(text).toContain('If "Elevator" were out of use');
+    expect(text).toContain("Quiet room");
+    expect(text).toContain("Nothing was proposed or changed");
+    expect(getAgentSession().proposals).toHaveLength(0);
+  });
+
+  it("simulates a closed doorway", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "simulate_closure", { door: "Gallery threshold" }));
+
+    expect(text).toContain("Gallery one");
+    expect(text).toContain("Still reachable without steps: Learning studio");
+  });
+
+  it("says when a doorway was last confirmed by a visitor, and when it never was", async () => {
+    const now = new Date().toISOString();
+    hydrateAgentSession({
+      runId: "run_test",
+      calls: [],
+      proposals: [
+        {
+          id: "prop_ok",
+          description: 'Mark "Quiet-room doorway" as step-free again',
+          reason: "the ramp is back",
+          mutation: { kind: "set-door-accessible", doorId: "door-corridor-quiet", accessible: true, reason: "the ramp is back" },
+          status: "approved",
+          baseSceneVersion: 1,
+          impact: { lostStepFree: [], gainedStepFree: [], newlyBlockedDoors: [] },
+          proposedAt: now,
+          decidedAt: now,
+          resultingSceneVersion: 2,
+          candidateScene: { key: "k", sha256: "a".repeat(64) }
+        }
+      ]
+    });
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "check_route_clearance", { to: "quiet-mark" }));
+
+    expect(text).toContain("Quiet-room doorway: last confirmed by a visitor today");
+    expect(text).toContain("Gallery threshold: never confirmed by a visitor");
   });
 });
 

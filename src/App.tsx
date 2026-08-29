@@ -29,6 +29,7 @@ import {
   declineProposal,
   hydrateAgentSession,
   recordCall,
+  recordConfirmation,
   resolveProposal,
   type Proposal
 } from "./webmcp/session";
@@ -38,7 +39,7 @@ import {
   fetchReview,
   rememberVenueToken
 } from "./lib/api";
-import { dataIssues, planRoute } from "./webmcp/queries";
+import { dataIssues, formatMetres, planRoute } from "./webmcp/queries";
 
 type Conversation = {
   question: string;
@@ -286,6 +287,7 @@ export default function App() {
       setLiveScene(proposal.scene);
     }
     resolveProposal(proposal.id);
+    recordConfirmation(proposal);
     recordCall("human_review", { proposal: proposal.id }, "answered", `Approved: ${proposal.description}`);
   }
 
@@ -701,6 +703,29 @@ export default function App() {
             <span>{isSpeaking ? "Stop guidance" : "Play route guidance"}</span>
             <i className="audio-bars"><b /><b /><b /></i>
           </button>
+          {accessPlan?.plan.found && selected && (
+            <section className="route-words" aria-label="Route in words">
+              <div className="section-label">Route, in words</div>
+              <ol>
+                {accessPlan.plan.steps.map((step, index) => (
+                  <li key={`${step.from}-${step.to}`}>
+                    <span>{index + 1}</span>
+                    <div>
+                      {step.fromRoom} to {step.toRoom}
+                      {step.doorLabel ? ` through ${step.doorLabel}` : ""}
+                      {step.doorWidth ? ` (${Math.round(step.doorWidth * 1000)} mm clear)` : ""}
+                      {step.accessible ? "" : " — has steps"}
+                      <small>{formatMetres(step.distance)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {blockedBy && (
+                <p className="route-words-note">Not step-free: this route passes {blockedBy}.</p>
+              )}
+            </section>
+          )}
+
           <button className="secondary-action" onClick={downloadScene}>
             Export scene package <span>JSON + assets</span>
           </button>

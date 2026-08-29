@@ -470,6 +470,31 @@ export function sharedBoundaryPoint(
   return best;
 }
 
+/** The scene as it would be with one doorway closed. A what-if; nothing is proposed. */
+export function withDoorClosed(scene: SpatialScene, doorId: string): SpatialScene {
+  const draft = structuredClone(scene);
+  const door = draft.doors.find((item) => item.id === doorId);
+  if (door) door.accessible = false;
+  for (const edge of draft.routeGraph.edges) {
+    if (edge.doorId === doorId) edge.accessible = false;
+  }
+  return draft;
+}
+
+/**
+ * The scene as it would be with a landmark out of use — a lift under repair,
+ * say. Every route edge touching its node stops being walkable.
+ */
+export function withLandmarkOutOfUse(scene: SpatialScene, landmarkId: string): SpatialScene {
+  const draft = structuredClone(scene);
+  const node = draft.routeGraph.nodes.find((item) => item.landmarkId === landmarkId);
+  if (!node) return draft;
+  for (const edge of draft.routeGraph.edges) {
+    if (edge.from === node.id || edge.to === node.id) edge.accessible = false;
+  }
+  return draft;
+}
+
 export function formatMetres(value: number) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} m`;
 }

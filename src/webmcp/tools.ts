@@ -29,7 +29,9 @@ import {
   resolveLandmark,
   resolveRoom,
   roomCentroid,
-  sharedBoundaryPoint
+  sharedBoundaryPoint,
+  withDoorClosed,
+  withLandmarkOutOfUse
 } from "./queries";
 import {
   getAgentSession,
@@ -104,6 +106,35 @@ function requireReason(args: Record<string, unknown>): ToolResult | null {
   return str(args, "reason")
     ? null
     : fail("Say what the person observed in `reason` — it is kept as provenance.");
+}
+
+function daysAgo(timestamp: number) {
+  const days = Math.max(0, Math.round((Date.now() - timestamp) / 86_400_000));
+  if (days === 0) return "today";
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+/**
+ * How current the data on these doorways is. The plan's extraction date is
+ * the floor; a visitor report the venue accepted is fresher than that. Data
+ * that is never confirmed is the reason accessibility information rots, so
+ * the age is said out loud rather than implied.
+ */
+function freshnessLine(
+  scene: SpatialScene,
+  doors: { id: string; label: string }[],
+  confirmations: { doorIds: string[]; at: number }[]
+) {
+  const extracted = Date.parse(scene.extraction.completedAt);
+  const parts = doors.map((door) => {
+    const latest = confirmations
+      .filter((item) => item.doorIds.includes(door.id))
+      .reduce<number | null>((best, item) => (best === null || item.at > best ? item.at : best), null);
+    return latest === null
+      ? `${door.label}: never confirmed by a visitor since the plan was read ${daysAgo(extracted)}`
+      : `${door.label}: last confirmed by a visitor ${daysAgo(latest)}`;
+  });
+  return parts.length ? `Freshness — ${parts.join("; ")}.` : "Freshness — no doorways on this route.";
 }
 
 function impactSentence(impact: { lostStepFree: string[]; gainedStepFree: string[] }) {
@@ -696,6 +727,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
             `Disputed by visitors: ${disputed.map((item) => `${item.description} — "${item.reason}"`).join("; ")}.`
           );
         }
+        lines.push(freshnessLine(scene, routeDoors, getAgentSession().confirmations));
         lines.push(
           "Widths come from the floor plan, checked for consistency, not measured on site. Turning " +
             "space, thresholds and gradients are not in this venue's data, so this is a doorway-width " +
@@ -705,6 +737,71 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         context.focusLandmark(target.id);
         recordCall("check_route_clearance", args, "answered", `${target.label}: ${verdict.toLowerCase()}`);
         return ok(lines.join("\n"));
+      }
+    },
+
+    {
+      name: "simulate_closure",
+      description:
+        "What-if, changing nothing: if a doorway were closed or a lift out of use, which " +
+        "destinations would stop being reachable without steps from the main entrance, and " +
+        "which would still be? For planned works or an out-of-service lift. Nothing is " +
+        "proposed or recorded.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          door: { type: "string", description: "A doorway to treat as closed, by name or id." },
+          landmark: {
+            type: "string",
+            description: "A lift or other landmark to treat as out of use, by name or id."
+          }
+        },
+        additionalProperties: false
+      },
+      annotations: readOnly,
+      execute: (args) => {
+        const scene = context.getScene();
+        const doorQuery = str(args, "door");
+        const landmarkQuery = str(args, "landmark");
+        if (!doorQuery && !landmarkQuery) {
+          return fail("Name a `door` to treat as closed, or a `landmark` to treat as out of use.");
+        }
+
+        let after: SpatialScene;
+        let subject: string;
+        if (doorQuery) {
+          const door = resolveDoor(scene, doorQuery);
+          if (!door) {
+            return fail(`No doorway in ${scene.name} matches "${doorQuery}". The doorways here are: ${named(scene.doors)}.`);
+          }
+          after = withDoorClosed(scene, door.id);
+          subject = `"${door.label}" were closed`;
+        } else {
+          const landmark = resolveLandmark(scene, landmarkQuery);
+          if (!landmark) {
+            return fail(`No landmark in ${scene.name} matches "${landmarkQuery}". Call list_destinations for valid ids.`);
+          }
+          after = withLandmarkOutOfUse(scene, landmark.id);
+          subject = `"${landmark.label}" were out of use`;
+        }
+
+        const before = accessibilitySummary(scene);
+        const next = accessibilitySummary(after);
+        const labels = new Map(scene.landmarks.map((item) => [item.id, item.label]));
+        const lost = [...before.reachableIds]
+          .filter((id) => !next.reachableIds.has(id))
+          .map((id) => labels.get(id) ?? id)
+          .sort();
+
+        recordCall("simulate_closure", args, "answered", `${subject}: ${lost.length} lost`);
+        return ok(
+          `If ${subject}: ` +
+            (lost.length
+              ? `${lost.length} destination(s) would lose step-free access from the main entrance — ${lost.join(", ")}.`
+              : "no destination would lose step-free access from the main entrance.") +
+            `\nStill reachable without steps: ${next.reachable.join(", ") || "none"}.\n` +
+            `A simulation over the current plan. Nothing was proposed or changed.`
+        );
       }
     },
 

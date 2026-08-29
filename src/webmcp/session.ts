@@ -14,7 +14,7 @@
  */
 import type { SpatialScene } from "../domain/spatial-scene";
 import { postAudit, postProposal, type ReviewCallRecord, type ReviewLedger } from "../lib/api";
-import type { AccessibilityImpact, GateViolation, SceneMutation } from "./gate";
+import { affectedDoorIds, type AccessibilityImpact, type GateViolation, type SceneMutation } from "./gate";
 
 export type CallOutcome = "answered" | "queued" | "refused" | "error";
 
@@ -75,11 +75,23 @@ export interface Dispute {
   declinedAt: number;
 }
 
+/**
+ * A visitor report the venue accepted. It is the freshest thing known about
+ * the doorways it touches — fresher than the plan they were extracted from.
+ */
+export interface Confirmation {
+  id: string;
+  description: string;
+  doorIds: string[];
+  at: number;
+}
+
 export interface AgentSessionState {
   calls: ToolCall[];
   proposals: Proposal[];
   refusals: Refusal[];
   disputes: Dispute[];
+  confirmations: Confirmation[];
 }
 
 interface SyncTarget {
@@ -96,7 +108,15 @@ export interface Settlement {
 const MAX_CALLS = 40;
 const AUDIT_FLUSH_MS = 250;
 
-let state: AgentSessionState = { calls: [], proposals: [], refusals: [], disputes: [] };
+const EMPTY: AgentSessionState = {
+  calls: [],
+  proposals: [],
+  refusals: [],
+  disputes: [],
+  confirmations: []
+};
+
+let state: AgentSessionState = EMPTY;
 let sync: SyncTarget | null = null;
 const listeners = new Set<() => void>();
 const settlements = new Map<string, Promise<Settlement>>();
@@ -195,12 +215,32 @@ export function hydrateAgentSession(ledger: ReviewLedger) {
       declinedAt: Date.parse(item.decidedAt ?? item.proposedAt)
     }))
     .sort((a, b) => b.declinedAt - a.declinedAt);
+  const confirmations: Confirmation[] = ledger.proposals
+    .filter((item) => item.status === "approved")
+    .map((item) => ({
+      id: `confirmed_${item.id}`,
+      description: item.description,
+      doorIds: affectedDoorIds(item.mutation as SceneMutation),
+      at: Date.parse(item.decidedAt ?? item.proposedAt)
+    }))
+    .sort((a, b) => b.at - a.at);
   // The server keeps calls oldest-first; the page shows newest-first.
   const calls: ToolCall[] = ledger.calls
     .map((item) => ({ ...item, at: Date.parse(item.at) }))
     .reverse()
     .slice(0, MAX_CALLS);
-  publish({ calls, proposals, refusals: [], disputes });
+  publish({ calls, proposals, refusals: [], disputes, confirmations });
+}
+
+/** A report was accepted in this tab; remember it as the freshest word on its doorways. */
+export function recordConfirmation(proposal: Proposal) {
+  const confirmation: Confirmation = {
+    id: `confirmed_${proposal.id}`,
+    description: proposal.description,
+    doorIds: affectedDoorIds(proposal.mutation),
+    at: Date.now()
+  };
+  publish({ ...state, confirmations: [confirmation, ...state.confirmations] });
 }
 
 export function recordCall(
@@ -315,5 +355,5 @@ export function dismissRefusal(id: string) {
 
 export function clearAgentSession() {
   settlements.clear();
-  publish({ calls: [], proposals: [], refusals: [], disputes: [] });
+  publish(EMPTY);
 }
