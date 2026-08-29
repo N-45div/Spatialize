@@ -116,7 +116,7 @@ Tests:
 
 ```bash
 npm test                            # 67 frontend tests (59 added for WebMCP)
-cd backend && .venv/Scripts/python -m pytest    # 17 API/agent/gate tests
+cd backend && .venv/Scripts/python -m pytest    # 19 API/agent/gate tests
 ```
 
 ## Deploy

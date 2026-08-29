@@ -53,8 +53,20 @@ export default function App() {
   const [view, setView] = useState(window.location.hash === "#studio" ? "studio" : "landing");
   const [liveScene, setLiveScene] = useState<SpatialScene | null>(null);
   const scene = liveScene ?? sampleScene;
-  const destinations = scene.landmarks.filter((item) => item.type === "destination");
-  const [destination, setDestination] = useState(destinations[0]?.id ?? "");
+  const destinations = useMemo(
+    () => scene.landmarks.filter((item) => item.type === "destination"),
+    [scene]
+  );
+  // The chosen id is kept as-is; the effective destination is derived so a
+  // venue swap falls back to that venue's first destination without an effect.
+  const [destinationChoice, setDestination] = useState(destinations[0]?.id ?? "");
+  const destination = useMemo(
+    () =>
+      destinations.some((item) => item.id === destinationChoice)
+        ? destinationChoice
+        : (destinations[0]?.id ?? ""),
+    [destinations, destinationChoice]
+  );
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [sourceName, setSourceName] = useState("ground-floor-plan.pdf");
@@ -71,7 +83,12 @@ export default function App() {
   const [showTour, setShowTour] = useState(false);
   const [askStage, setAskStage] = useState<AskStage>(null);
   const [askVoice, setAskVoice] = useState<string | null>(null);
-  const [resolvedIssues, setResolvedIssues] = useState<string[]>([]);
+  // Resolved issues belong to one scene version. Keying them on it means a new
+  // version starts clean without an effect having to reset anything.
+  const [resolvedState, setResolvedState] = useState<{ key: string; ids: string[] }>({
+    key: "",
+    ids: []
+  });
   const [approving, setApproving] = useState(false);
   const historyRef = useRef<ConversationTurn[]>([]);
   const stageTimerRef = useRef<number | null>(null);
@@ -81,21 +98,15 @@ export default function App() {
   const answerAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (destinations.length && !destinations.some((item) => item.id === destination)) {
-      setDestination(destinations[0].id);
-    }
-  }, [scene.id, destinations, destination]);
-
-  useEffect(() => {
     const onHashChange = () =>
       setView(window.location.hash === "#studio" ? "studio" : "landing");
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  useEffect(() => {
-    setResolvedIssues([]);
-  }, [ingestionRun?.runId, ingestionRun?.sceneVersion]);
+  const resolvedKey = `${ingestionRun?.runId ?? ""}:${ingestionRun?.sceneVersion ?? 0}`;
+  const resolvedIssues = resolvedState.key === resolvedKey ? resolvedState.ids : [];
+  const setResolvedIssues = (ids: string[]) => setResolvedState({ key: resolvedKey, ids });
 
   async function resolveIssue(issueId: string) {
     if (!ingestionRun || approving) return;
@@ -356,6 +367,16 @@ export default function App() {
     }
   }
 
+  function replayAnswer() {
+    const url = conversation?.audioUrl;
+    if (!url) return;
+    if (!answerAudioRef.current) answerAudioRef.current = new Audio();
+    const audio = answerAudioRef.current;
+    audio.src = url;
+    audio.currentTime = 0;
+    void audio.play().catch(() => undefined);
+  }
+
   function primeAnswerAudio() {
     // Start a silent clip inside the user gesture so the browser lets the
     // real answer audio play when it arrives ~30s later.
@@ -551,16 +572,7 @@ export default function App() {
                 <p>{conversation.answer}</p>
                 {conversation.audioKind === "generated" && conversation.audioUrl && (
                   <div className="answer-voice">
-                    <button
-                      onClick={() => {
-                        const audio = answerAudioRef.current ?? new Audio();
-                        answerAudioRef.current = audio;
-                        audio.src = conversation.audioUrl!;
-                        audio.currentTime = 0;
-                        void audio.play().catch(() => undefined);
-                      }}
-                      aria-label="Replay the spoken answer"
-                    >
+                    <button onClick={replayAnswer} aria-label="Replay the spoken answer">
                       ▶
                     </button>
                     <span title={`genblaze manifest ${conversation.manifestHash ?? ""}`}>

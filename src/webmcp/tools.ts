@@ -311,7 +311,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
               `The only available route is ${formatMetres(plan.totalDistance)} and is blocked by: ` +
               `${blockers || "a door recorded as not step-free"}.\n\n` +
               `Route if steps are acceptable:\n${steps}\n\n` +
-              `If that door has since been made accessible, report it with report_access_change.`
+              `If that door has since been made step-free, report it with propose_access_change.`
           );
         }
 
