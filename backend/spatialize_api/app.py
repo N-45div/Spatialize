@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,7 @@ from .media import (
     build_transcriber,
 )
 from .models import RunRecord
+from .review import AuditRequest, ProposalConflict, ProposalRequest, ReviewService
 from .storage import ObjectStore, build_object_store
 from .workflow import RunService, SceneRejected, UploadRejected
 
@@ -75,6 +76,7 @@ def create_app(
         extractor or _default_extractor(active_settings),
         active_settings.max_upload_bytes,
     )
+    review = ReviewService(service)
     sink = build_genblaze_sink(active_settings)
     # STT runs sink-less: transcript text assets aren't transferable objects;
     # the app persists sources and transcripts to B2 through its own store.
@@ -158,6 +160,79 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         except (KeyError, ValueError) as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found") from error
+
+    def load_run(run_id: str) -> RunRecord:
+        try:
+            return service.get_run(run_id)
+        except (KeyError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found") from error
+
+    def require_venue(token: str | None) -> None:
+        if active_settings.venue_token and token != active_settings.venue_token:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the venue team can decide a proposal",
+            )
+
+    @app.get("/api/runs/{run_id}/review")
+    def get_review(run_id: str) -> Response:
+        ledger = review.load(load_run(run_id))
+        return Response(content=ledger.model_dump_json(by_alias=True), media_type=JSON_TYPE)
+
+    @app.post("/api/runs/{run_id}/proposals", status_code=status.HTTP_201_CREATED)
+    def create_proposal(run_id: str, request: ProposalRequest) -> Response:
+        record = load_run(run_id)
+        try:
+            proposal = review.propose(record, request)
+        except SceneRejected as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return Response(
+            content=proposal.model_dump_json(by_alias=True),
+            media_type=JSON_TYPE,
+            status_code=status.HTTP_201_CREATED,
+        )
+
+    @app.post("/api/runs/{run_id}/proposals/{proposal_id}/approve")
+    def approve_proposal(
+        run_id: str,
+        proposal_id: str,
+        x_venue_token: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        require_venue(x_venue_token)
+        record = load_run(run_id)
+        try:
+            proposal, record = review.approve(record, proposal_id)
+        except KeyError as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found") from error
+        except (ProposalConflict, SceneRejected) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        payload = {
+            "proposal": json.loads(proposal.model_dump_json(by_alias=True)),
+            "run": json.loads(record.model_dump_json(by_alias=True)),
+        }
+        return Response(content=json.dumps(payload), media_type=JSON_TYPE)
+
+    @app.post("/api/runs/{run_id}/proposals/{proposal_id}/decline")
+    def decline_proposal(
+        run_id: str,
+        proposal_id: str,
+        x_venue_token: Annotated[str | None, Header()] = None,
+    ) -> Response:
+        require_venue(x_venue_token)
+        record = load_run(run_id)
+        try:
+            proposal = review.decline(record, proposal_id)
+        except KeyError as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found") from error
+        except ProposalConflict as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        return Response(content=proposal.model_dump_json(by_alias=True), media_type=JSON_TYPE)
+
+    @app.post("/api/runs/{run_id}/audit")
+    def record_audit(run_id: str, request: AuditRequest) -> dict[str, int]:
+        return {"recorded": review.record_calls(load_run(run_id), request.calls)}
 
     def narration_payload(record: RunRecord, script: str, warnings: list[str]) -> dict | None:
         try:

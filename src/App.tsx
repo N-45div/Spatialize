@@ -24,7 +24,16 @@ const TOUR_STORAGE_KEY = "spatialize-tour-done";
 import { routeToLandmark } from "./lib/routes";
 import { AgentPanel } from "./components/AgentPanel";
 import { useWebMCP } from "./webmcp/useWebMCP";
-import { declineProposal, recordCall, resolveProposal, type Proposal } from "./webmcp/session";
+import {
+  clearAgentSession,
+  configureAgentSync,
+  declineProposal,
+  hydrateAgentSession,
+  recordCall,
+  resolveProposal,
+  type Proposal
+} from "./webmcp/session";
+import { approveProposalRemote, declineProposalRemote, fetchReview } from "./lib/api";
 import { planRoute } from "./webmcp/queries";
 
 type Conversation = {
@@ -206,13 +215,58 @@ export default function App() {
   // venue; swapping the floor plan re-registers and fires `toolchange`.
   const webmcp = useWebMCP(scene, { focusLandmark: setDestination, setViewMode });
 
+  // Mirror the agent session to the run's review ledger on the server. The
+  // scene version travels with it so a proposal is stamped with what it was
+  // made against, and approval can refuse one that has gone stale.
+  const runId = ingestionRun?.runId ?? null;
+  const sceneVersion = ingestionRun?.sceneVersion ?? 0;
+  useEffect(() => {
+    configureAgentSync(runId ? { runId, sceneVersion } : null);
+  }, [runId, sceneVersion]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    clearAgentSession();
+    fetchReview(runId)
+      .then((ledger) => {
+        if (!cancelled) hydrateAgentSession(ledger);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
+
   if (view === "landing") {
     return <Landing onEnter={() => { window.location.hash = "#studio"; }} />;
   }
 
   /** A person accepts an agent's proposed change; it is already gate-validated. */
-  function approveProposal(proposal: Proposal) {
-    setLiveScene(proposal.scene);
+  /**
+   * A person accepts an agent's proposal. With a run loaded the server does
+   * the installing — it re-validates the candidate, checks the proposal was
+   * made against the current scene version, and writes a new version. The
+   * tab only applies a proposal itself when there is no server to ask.
+   */
+  async function approveProposal(proposal: Proposal) {
+    if (ingestionRun) {
+      try {
+        const { run } = await approveProposalRemote(ingestionRun.runId, proposal.id);
+        setIngestionRun(run);
+        await reloadScene(run.runId);
+      } catch (error) {
+        recordCall(
+          "human_review",
+          { proposal: proposal.id },
+          "error",
+          error instanceof Error ? error.message : "Approval failed"
+        );
+        return;
+      }
+    } else if (proposal.scene) {
+      setLiveScene(proposal.scene);
+    }
     resolveProposal(proposal.id);
     recordCall("human_review", { proposal: proposal.id }, "answered", `Approved: ${proposal.description}`);
   }
@@ -222,7 +276,20 @@ export default function App() {
    * building than the building's own record, so the disagreement is kept and
    * an agent can read it back through list_disputed_claims.
    */
-  function rejectProposal(id: string) {
+  async function rejectProposal(id: string) {
+    if (ingestionRun) {
+      try {
+        await declineProposalRemote(ingestionRun.runId, id);
+      } catch (error) {
+        recordCall(
+          "human_review",
+          { proposal: id },
+          "error",
+          error instanceof Error ? error.message : "Decline failed"
+        );
+        return;
+      }
+    }
     const dispute = declineProposal(id);
     recordCall(
       "human_review",

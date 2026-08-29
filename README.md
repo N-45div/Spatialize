@@ -115,8 +115,8 @@ ASSEMBLYAI_API_KEY                               # speech-to-text (needs B2 mode
 Tests:
 
 ```bash
-npm test                            # 67 frontend tests (59 added for WebMCP)
-cd backend && .venv/Scripts/python -m pytest    # 19 API/agent/gate tests
+npm test                            # 73 frontend tests (65 added for WebMCP)
+cd backend && .venv/Scripts/python -m pytest    # 30 API/agent/gate/review tests (11 added)
 ```
 
 ## Deploy
@@ -138,8 +138,12 @@ a keepalive GitHub Action that pings `/health` so the free instance stays warm.
   review; voice edits always re-flag the scene as `needs-review`.
 - Multi-page PDFs use page 1 only, and conversations are single-turn today.
 - Agent writes are proposals, never edits: they clear the topology gate *and* a
-  human before anything changes. Approvals currently update the browser session;
-  persisting them through the B2 run store is the next step, not a shipped one.
+  human before anything changes. Every proposal, decision and tool call is
+  written to the run's review ledger in the same store that holds scene
+  versions, so a refresh or a second device sees the same record. The server
+  re-validates every candidate scene itself and computes the accessibility
+  impact from its own copy; the browser's gate is fast feedback, not the
+  boundary.
 - The gate checks that a change is consistent with the plan. It cannot check
   whether a report is true of the building — only a person can, and the tools
   say so in their own output rather than letting an agent assume otherwise.

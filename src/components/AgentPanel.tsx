@@ -9,6 +9,13 @@ import {
 import { describeToolSurface } from "../webmcp/tools";
 import type { WebMCPStatus } from "../webmcp/useWebMCP";
 
+const PERSIST_LABEL = {
+  local: "Held in this tab only — no venue record is loaded",
+  saving: "Writing to the venue record…",
+  saved: "On the venue record. Survives refresh, visible to every agent.",
+  failed: "Could not reach the venue record. Held in this tab."
+} as const;
+
 const OUTCOME_LABEL = {
   answered: "answered",
   queued: "queued",
@@ -110,6 +117,9 @@ export function AgentPanel({
                   <strong>{proposal.description}</strong>
                   <small className="proposal-reason">“{proposal.reason}”</small>
                   <small className="proposal-impact">{impactLine(proposal)}</small>
+                  <small className={`proposal-persist ${proposal.persisted}`}>
+                    {PERSIST_LABEL[proposal.persisted]}
+                  </small>
                   <div className="proposal-actions">
                     <button className="approve" onClick={() => onApprove(proposal)}>
                       Approve

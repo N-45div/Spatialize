@@ -51,7 +51,9 @@ typechecks, and passes its tests in isolation.
 | Agent session store | `src/webmcp/session.ts` | Tool-call log, approval queue, refusals |
 | Agent dock UI | `src/components/AgentPanel.tsx` | Watch the agent work, approve or reject its changes |
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
-| 59 new tests | `tests/webmcp-*.test.ts` (58), `spatial-scene.test.ts` (1) | Both gate paths, every tool, the contract itself |
+| Review ledger (server) | `backend/spatialize_api/review.py` | Proposals, decisions and audit persisted; the gate that counts |
+| Review sync (client) | `src/webmcp/session.ts`, `src/lib/api.ts` | Hydrate from the ledger, post proposals, decide through the server |
+| 76 new tests | `tests/webmcp-*.test.ts` (64), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (11) | Both gate paths, every tool, the contract, persistence across processes |
 
 ### What is unchanged prior work
 
@@ -275,6 +277,35 @@ So declining records a disagreement. `list_disputed_claims` reports both sides,
 and `check_accessibility` flags when disputes are outstanding. An agent asking
 about this venue is told what the venue says *and* what visitors said.
 
+## Where the record lives
+
+"Kept on the record" has to mean more than "kept in this tab". Every proposal
+an agent makes is posted to the run's review ledger on the server and stored in
+the same object store that holds the venue's scene versions. A page refresh, or
+a different visitor's agent on a different device, hydrates from that ledger.
+
+The server does not trust the browser's gate. Each proposal carries the full
+candidate scene; the backend re-runs the same Pydantic topology validator,
+checks the candidate is a revision of *this* venue (same id, source hash and
+dimensions), and computes the accessibility impact from its own copy. A
+candidate that fails is refused with the rule and never stored. Approval checks
+the proposal was made against the scene version the venue is currently on — one
+made against version 3 cannot be approved once the venue is on version 4 — and
+then writes a new version through the same path every other scene change
+takes. Proposals are idempotent on their id, so an agent that retries does not
+file twice.
+
+```
+GET  /api/runs/{id}/review                        the ledger
+POST /api/runs/{id}/proposals                     validate, store, compute impact
+POST /api/runs/{id}/proposals/{pid}/approve       version check, new scene version
+POST /api/runs/{id}/proposals/{pid}/decline       kept, status "declined"
+POST /api/runs/{id}/audit                         tool-call audit entries
+```
+
+The dock shows, per proposal, whether it is on the venue record or held only
+in the tab, so the difference is never hidden from the person reviewing.
+
 ## Measurements, not verdicts
 
 CHI 2025 (N=190) found scooter users judged 46% of barriers impassable against
@@ -295,9 +326,11 @@ turning circle at all.
 ## Honesty box
 
 - This is **rehearsal** guidance, not live navigation, and no safety claim is made.
-- Approving a proposal updates the scene in the browser session. Persisting
-  approved scenes back through the B2-backed run store is the next step, not a
-  shipped one.
+- The review ledger is one JSON object per run, rewritten on each change.
+  Two venue reviewers deciding in the same second would race; the second write
+  wins. Fine for a venue team, not for a stadium's worth of concurrent agents.
+- The venue role is a shared token in a header, not accounts. Unset for the
+  open demo, so anyone can approve or decline there.
 - Route quality is bounded by extraction quality. `list_data_issues` exists so an
   agent can surface exactly that rather than paper over it.
 - WebMCP is an origin trial (Chrome 149–156). Outside a WebMCP browser the page

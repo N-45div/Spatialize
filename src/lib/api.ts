@@ -128,6 +128,99 @@ export async function approveRun(
   return response.json() as Promise<IngestionRun>;
 }
 
+export interface ReviewImpact {
+  lostStepFree: string[];
+  gainedStepFree: string[];
+  newlyBlockedDoors: string[];
+}
+
+export interface ReviewProposalRecord {
+  id: string;
+  description: string;
+  reason: string;
+  mutation: Record<string, unknown>;
+  status: "pending" | "approved" | "declined";
+  baseSceneVersion: number;
+  impact: ReviewImpact;
+  proposedAt: string;
+  decidedAt: string | null;
+  resultingSceneVersion: number | null;
+  candidateScene: { key: string; sha256: string };
+}
+
+export interface ReviewCallRecord {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  outcome: "answered" | "queued" | "refused" | "error";
+  summary: string;
+  at: string;
+}
+
+/** Everything agents proposed on a run and what people decided. */
+export interface ReviewLedger {
+  runId: string;
+  proposals: ReviewProposalRecord[];
+  calls: ReviewCallRecord[];
+}
+
+export async function fetchReview(runId: string): Promise<ReviewLedger> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/review`);
+  if (!response.ok) await readError(response, "Review ledger unavailable");
+  return response.json() as Promise<ReviewLedger>;
+}
+
+export async function postProposal(
+  runId: string,
+  body: {
+    id: string;
+    description: string;
+    reason: string;
+    mutation: Record<string, unknown>;
+    baseSceneVersion: number;
+    candidateScene: unknown;
+  }
+): Promise<ReviewProposalRecord> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) await readError(response, "The venue did not accept the proposal");
+  return response.json() as Promise<ReviewProposalRecord>;
+}
+
+export async function approveProposalRemote(
+  runId: string,
+  proposalId: string
+): Promise<{ proposal: ReviewProposalRecord; run: IngestionRun }> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals/${proposalId}/approve`, {
+    method: "POST"
+  });
+  if (!response.ok) await readError(response, "Approval failed");
+  return response.json() as Promise<{ proposal: ReviewProposalRecord; run: IngestionRun }>;
+}
+
+export async function declineProposalRemote(
+  runId: string,
+  proposalId: string
+): Promise<ReviewProposalRecord> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals/${proposalId}/decline`, {
+    method: "POST"
+  });
+  if (!response.ok) await readError(response, "Decline failed");
+  return response.json() as Promise<ReviewProposalRecord>;
+}
+
+export async function postAudit(runId: string, calls: ReviewCallRecord[]): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/audit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ calls })
+  });
+  if (!response.ok) await readError(response, "Audit write failed");
+}
+
 export function resolveAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   return url.startsWith("/") ? `${apiBaseUrl}${url}` : url;

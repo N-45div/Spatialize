@@ -1190,3 +1190,8 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .dispute-card small { display: block; font-size: 7.5px; margin-top: 5px; line-height: 1.5; }
 .dispute-reason { color: #93a3c0; font-style: italic; }
 .dispute-note { color: #6b7890; }
+
+.proposal-persist { color: #7a8c85; }
+.proposal-persist.saved { color: #6fae95; }
+.proposal-persist.saving { color: #b9a880; }
+.proposal-persist.failed { color: #e08a7d; }

@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     b2_bucket: str | None = Field(None, validation_alias="B2_BUCKET")
     b2_region: str | None = Field(None, validation_alias="B2_REGION")
 
+    # When set, approving or declining a proposal requires this value in the
+    # X-Venue-Token header. Unset means an open demo where anyone reviews.
+    venue_token: str | None = Field(
+        None, validation_alias=AliasChoices("SPATIALIZE_VENUE_TOKEN", "venue_token")
+    )
+
     gemini_api_key: str | None = Field(None, validation_alias="GEMINI_API_KEY")
     assemblyai_api_key: str | None = Field(None, validation_alias="ASSEMBLYAI_API_KEY")
     openrouter_api_key: str | None = Field(None, validation_alias="OPENROUTER_API_KEY")
