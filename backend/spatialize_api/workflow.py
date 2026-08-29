@@ -234,6 +234,10 @@ class RunService:
             {"run-id": record.run_id, "artifact": "approved-scene"},
         )
         record.current_scene = record.approved_scene
+        # Approval writes a different scene (status flipped, issues cleared), so
+        # it is a new version. Anything drafted against the previous version
+        # must be re-proposed rather than silently installed over this one.
+        record.scene_version += 1
         record.status = "approved"
         record.updated_at = datetime.now(UTC)
         self._save_record(record)

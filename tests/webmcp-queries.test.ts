@@ -7,7 +7,9 @@ import {
   dataIssues,
   planRoute,
   polygonArea,
-  resolveDoor
+  resolveDoor,
+  resolveRoom,
+  stepFreeReachableIds
 } from "../src/webmcp/queries";
 
 function copyScene(): SpatialScene {
@@ -85,6 +87,41 @@ describe("route planning", () => {
 
     expect(to).toBeNull();
     expect(plan.found).toBe(false);
+  });
+});
+
+describe("resolving names", () => {
+  it("does not let a query that merely contains a room's name resolve to that room", () => {
+    // "Quiet-room doorway" is a door. It used to resolve to the room "Quiet
+    // room", and a rename aimed at the door landed on the room.
+    expect(resolveRoom(sampleScene, "Quiet-room doorway")).toBeNull();
+    expect(resolveDoor(sampleScene, "Quiet-room doorway")?.id).toBe("door-corridor-quiet");
+  });
+
+  it("does not let a label in another script match every unknown query", () => {
+    const scene = copyScene();
+    scene.doors[0].label = "会議室ドア";
+
+    expect(resolveDoor(scene, "north loading bay")).toBeNull();
+    expect(resolveDoor(scene, "会議室ドア")?.id).toBe(scene.doors[0].id);
+  });
+
+  it("reports an unresolvable starting point rather than routing from the entrance", () => {
+    const { plan, fromUnresolved } = planRoute(sampleScene, { from: "Reception desk", to: "quiet-mark" });
+
+    expect(fromUnresolved).toBe(true);
+    expect(plan.found).toBe(false);
+  });
+
+  it("never starts a route from a landmark-less node when the venue has no entrance", () => {
+    const scene = copyScene();
+    scene.landmarks = scene.landmarks.filter((item) => item.type !== "entrance");
+    for (const node of scene.routeGraph.nodes) {
+      if (node.landmarkId === "entrance") delete node.landmarkId;
+    }
+
+    expect(stepFreeReachableIds(scene).size).toBe(0);
+    expect(planRoute(scene, { to: "quiet-mark" }).plan.found).toBe(false);
   });
 });
 

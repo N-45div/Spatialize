@@ -115,8 +115,8 @@ ASSEMBLYAI_API_KEY                               # speech-to-text (needs B2 mode
 Tests:
 
 ```bash
-npm test                            # 80 frontend tests (72 added for WebMCP)
-cd backend && .venv/Scripts/python -m pytest    # 30 API/agent/gate/review tests (11 added)
+npm test                            # 94 frontend tests (86 added for WebMCP)
+cd backend && .venv/Scripts/python -m pytest    # 38 API/agent/gate/review tests (19 added)
 ```
 
 ## Deploy

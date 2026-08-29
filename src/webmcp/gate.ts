@@ -7,9 +7,19 @@
  * into structured, addressable feedback instead of a failed call. An agent that
  * proposes an impossible edit gets told exactly which rule it broke and where,
  * so it can correct itself rather than guess again.
+ *
+ * This is the browser's copy of the rules, for immediate feedback. The server
+ * applies the same mutation to its own scene before anything is stored; see
+ * backend/spatialize_api/review.py, which this file mirrors.
  */
-import { SpatialSceneSchema, type SpatialScene } from "../domain/spatial-scene";
+import { LandmarkSchema, SpatialSceneSchema, type SpatialScene } from "../domain/spatial-scene";
 import { accessibilitySummary } from "./queries";
+
+export const LANDMARK_TYPES = LandmarkSchema.shape.type.options;
+export type LandmarkType = (typeof LANDMARK_TYPES)[number];
+
+export const LABEL_LIMIT = 80;
+export const REASON_LIMIT = 240;
 
 export type SceneMutation =
   | {
@@ -31,7 +41,7 @@ export type SceneMutation =
   | {
       kind: "add-landmark";
       label: string;
-      landmarkType: "entrance" | "elevator" | "stairs" | "restroom" | "destination";
+      landmarkType: LandmarkType;
       position: [number, number];
       reason: string;
     }
@@ -73,7 +83,8 @@ function clone(scene: SpatialScene): SpatialScene {
  * Free text written by a stranger, on its way into venue data that other
  * agents will later read back. Newlines and control characters are what let
  * injected text impersonate a new instruction block, so they are collapsed to
- * spaces rather than preserved, and the result is capped.
+ * spaces rather than preserved, and the result is capped by code point so an
+ * emoji at the boundary is kept whole rather than cut into a lone surrogate.
  *
  * This is the code half of "validate strictly in code, loosely in schema". The
  * other half is that a person on the venue team reads every one of these before
@@ -87,7 +98,30 @@ export function sanitiseFreeText(value: string, maxLength: number): string {
       return isControl ? " " : character;
     })
     .join("");
-  return withoutControls.replace(/\s+/g, " ").trim().slice(0, maxLength);
+  const collapsed = withoutControls.replace(/\s+/g, " ").trim();
+  return Array.from(collapsed).slice(0, maxLength).join("");
+}
+
+/** The mutation with every free-text field cleaned, before anything reads it. */
+export function sanitiseMutation(mutation: SceneMutation): SceneMutation {
+  const reason = sanitiseFreeText(mutation.reason, REASON_LIMIT);
+  if ("label" in mutation) {
+    return { ...mutation, reason, label: sanitiseFreeText(mutation.label, LABEL_LIMIT) };
+  }
+  return { ...mutation, reason };
+}
+
+/** Doors whose passability this mutation makes a claim about. */
+export function affectedDoorIds(mutation: SceneMutation): string[] {
+  switch (mutation.kind) {
+    case "set-door-accessible":
+    case "set-door-width":
+      return [mutation.doorId];
+    default:
+      // A rename or a new landmark says nothing about whether a doorway can
+      // be passed, so it must not turn a route check into "unknown".
+      return [];
+  }
 }
 
 /** Provenance stamp for anything an agent relayed on a person's behalf. */
@@ -95,7 +129,7 @@ function agentEvidence(reason: string) {
   return {
     confidence: 0.6,
     method: "human" as const,
-    note: sanitiseFreeText(`Reported via agent: ${reason}`, 240)
+    note: sanitiseFreeText(`Reported via agent: ${reason}`, REASON_LIMIT)
   };
 }
 
@@ -134,7 +168,7 @@ function applyDoorAccessible(
   if (!door) return;
   door.accessible = mutation.accessible;
   door.evidence.connectivity = agentEvidence(mutation.reason);
-  if (!mutation.cascade) return;
+  if (mutation.cascade === false) return;
   for (const edge of draft.routeGraph.edges) {
     if (edge.doorId === door.id) edge.accessible = mutation.accessible;
   }
@@ -152,7 +186,7 @@ function applyRelabel(draft: Draft, mutation: Extract<SceneMutation, { kind: "re
     (item) => item.id === mutation.entityId
   );
   if (!entity) return;
-  entity.label = sanitiseFreeText(mutation.label, 80);
+  entity.label = sanitiseFreeText(mutation.label, LABEL_LIMIT);
   // Rooms and landmarks carry label evidence; the door schema has no slot for
   // it, so a door rename simply carries none rather than mis-stamping another.
   if ("label" in entity.evidence) {
@@ -163,7 +197,7 @@ function applyRelabel(draft: Draft, mutation: Extract<SceneMutation, { kind: "re
 function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-landmark" }>) {
   draft.landmarks.push({
     id: freeId(mutation.label, new Set(draft.landmarks.map((item) => item.id))),
-    label: sanitiseFreeText(mutation.label, 80),
+    label: sanitiseFreeText(mutation.label, LABEL_LIMIT),
     type: mutation.landmarkType,
     position: mutation.position,
     confidence: 0.6,
@@ -177,7 +211,7 @@ function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind:
 function applyAddDoor(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-door" }>) {
   draft.doors.push({
     id: freeId(mutation.label, new Set(draft.doors.map((item) => item.id))),
-    label: sanitiseFreeText(mutation.label, 80),
+    label: sanitiseFreeText(mutation.label, LABEL_LIMIT),
     position: mutation.position,
     width: mutation.width,
     rotation: 0,
@@ -220,17 +254,30 @@ function applyMutation(scene: SpatialScene, mutation: SceneMutation): unknown {
   return draft;
 }
 
+/**
+ * Diffed by id, so a rename never reads as access lost and regained. Labels
+ * in the result come from whichever scene still has the landmark.
+ */
 function diffAccessibility(before: SpatialScene, after: SpatialScene): AccessibilityImpact {
   const previous = accessibilitySummary(before);
   const next = accessibilitySummary(after);
-  const previousReachable = new Set(previous.reachable);
-  const nextReachable = new Set(next.reachable);
-  const previousBlockedDoors = new Set(previous.inaccessibleDoors);
+  const labelsBefore = new Map(before.landmarks.map((item) => [item.id, item.label]));
+  const labelsAfter = new Map(after.landmarks.map((item) => [item.id, item.label]));
+  const doorsAfter = new Map(after.doors.map((door) => [door.id, door.label]));
 
   return {
-    lostStepFree: previous.reachable.filter((label) => !nextReachable.has(label)),
-    gainedStepFree: next.reachable.filter((label) => !previousReachable.has(label)),
-    newlyBlockedDoors: next.inaccessibleDoors.filter((label) => !previousBlockedDoors.has(label))
+    lostStepFree: [...previous.reachableIds]
+      .filter((id) => !next.reachableIds.has(id))
+      .map((id) => labelsBefore.get(id) ?? id)
+      .sort(),
+    gainedStepFree: [...next.reachableIds]
+      .filter((id) => !previous.reachableIds.has(id))
+      .map((id) => labelsAfter.get(id) ?? id)
+      .sort(),
+    newlyBlockedDoors: [...next.inaccessibleDoorIds]
+      .filter((id) => !previous.inaccessibleDoorIds.has(id))
+      .map((id) => doorsAfter.get(id) ?? id)
+      .sort()
   };
 }
 
@@ -264,6 +311,7 @@ export function gateMutation(scene: SpatialScene, mutation: SceneMutation): Gate
 /** One-line human summary of a mutation, used in the log and the review queue. */
 export function describeMutation(scene: SpatialScene, mutation: SceneMutation): string {
   const doorLabel = (id: string) => scene.doors.find((item) => item.id === id)?.label ?? id;
+  const cleanLabel = "label" in mutation ? sanitiseFreeText(mutation.label, LABEL_LIMIT) : "";
 
   switch (mutation.kind) {
     case "set-door-accessible":
@@ -276,17 +324,17 @@ export function describeMutation(scene: SpatialScene, mutation: SceneMutation): 
       const current =
         collectionFor(scene, mutation.entityKind).find((item) => item.id === mutation.entityId)
           ?.label ?? mutation.entityId;
-      return `Rename ${mutation.entityKind} "${current}" to "${mutation.label}"`;
+      return `Rename ${mutation.entityKind} "${current}" to "${cleanLabel}"`;
     }
     case "add-landmark":
-      return `Add ${mutation.landmarkType} "${mutation.label}" at ${mutation.position
+      return `Add ${mutation.landmarkType} "${cleanLabel}" at ${mutation.position
         .map((value) => value.toFixed(1))
         .join(", ")}`;
     case "add-door": {
       const roomLabel = (id: string) =>
         id === "outside" ? "outside" : (scene.rooms.find((item) => item.id === id)?.label ?? id);
       return (
-        `Add ${mutation.accessible ? "step-free " : ""}doorway "${mutation.label}" between ` +
+        `Add ${mutation.accessible ? "step-free " : ""}doorway "${cleanLabel}" between ` +
         `${roomLabel(mutation.connects[0])} and ${roomLabel(mutation.connects[1])}`
       );
     }

@@ -8,10 +8,19 @@
  * validator and a person agreeing.
  */
 import type { SpatialScene } from "../domain/spatial-scene";
-import { describeMutation, gateMutation, type SceneMutation } from "./gate";
+import {
+  affectedDoorIds,
+  describeMutation,
+  gateMutation,
+  LANDMARK_TYPES,
+  sanitiseMutation,
+  type LandmarkType,
+  type SceneMutation
+} from "./gate";
 import {
   accessibilitySummary,
   adjacentRooms,
+  CONFIDENCE_FLOOR,
   dataIssues,
   formatMetres,
   planRoute,
@@ -22,7 +31,14 @@ import {
   roomCentroid,
   sharedBoundaryPoint
 } from "./queries";
-import { getAgentSession, queueProposal, recordCall, recordRefusal } from "./session";
+import {
+  getAgentSession,
+  queueProposal,
+  recordCall,
+  recordRefusal,
+  resolveProposal,
+  settleProposal
+} from "./session";
 import type { ToolDefinition, ToolResult } from "./types";
 
 export interface ToolContext {
@@ -38,8 +54,15 @@ export interface ToolContext {
   canPropose?: boolean;
 }
 
-/** Extraction confidence below which a measurement is reported as unconfirmed. */
-const CONFIDENCE_FLOOR = 0.85;
+/** How many valid options to list back to an agent before summarising. */
+const OPTION_CAP = 12;
+
+/** "Label (id), Label (id), …and N more" — kept short so results stay inside budget. */
+function named(items: { id: string; label: string }[]): string {
+  const shown = items.slice(0, OPTION_CAP).map((item) => `${item.label} (${item.id})`);
+  const rest = items.length - shown.length;
+  return shown.join(", ") + (rest > 0 ? `, and ${rest} more` : "");
+}
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
@@ -64,20 +87,48 @@ function num(args: Record<string, unknown>, key: string): number | null {
 }
 
 function bool(args: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  return boolStrict(args, key) ?? fallback;
+}
+
+/** A boolean, or null when the argument is missing or not boolean-shaped. */
+function boolStrict(args: Record<string, unknown>, key: string): boolean | null {
   const value = args[key];
   if (typeof value === "boolean") return value;
   if (value === "true") return true;
   if (value === "false") return false;
-  return fallback;
+  return null;
 }
 
-/** Shared tail for every write tool: gate, then queue or refuse. */
-function submitMutation(
+/** The provenance every write needs, or the failure to hand back without it. */
+function requireReason(args: Record<string, unknown>): ToolResult | null {
+  return str(args, "reason")
+    ? null
+    : fail("Say what the person observed in `reason` — it is kept as provenance.");
+}
+
+function impactSentence(impact: { lostStepFree: string[]; gainedStepFree: string[] }) {
+  const lines: string[] = [];
+  if (impact.lostStepFree.length) {
+    lines.push(`Would remove step-free access to: ${impact.lostStepFree.join(", ")}.`);
+  }
+  if (impact.gainedStepFree.length) {
+    lines.push(`Would restore step-free access to: ${impact.gainedStepFree.join(", ")}.`);
+  }
+  return lines.length ? lines.join(" ") : "No change to step-free reachability.";
+}
+
+/**
+ * Shared tail for every write tool: clean, gate locally, then ask the venue
+ * record. The agent is told what the server actually did — a proposal the
+ * server refused is reported as refused, not as queued.
+ */
+async function submitMutation(
   context: ToolContext,
   toolName: string,
   args: Record<string, unknown>,
-  mutation: SceneMutation
-): ToolResult {
+  rawMutation: SceneMutation
+): Promise<ToolResult> {
+  const mutation = sanitiseMutation(rawMutation);
   const scene = context.getScene();
   const description = describeMutation(scene, mutation);
   const verdict = gateMutation(scene, mutation);
@@ -104,26 +155,37 @@ function submitMutation(
     impact: verdict.impact,
     scene: verdict.scene
   });
+  const settlement = await settleProposal(proposal.id);
 
-  const impactLines: string[] = [];
-  if (verdict.impact.lostStepFree.length) {
-    impactLines.push(
-      `Would remove step-free access to: ${verdict.impact.lostStepFree.join(", ")}.`
+  if (settlement.status === "refused") {
+    // The server applied the same mutation to its own scene and would not
+    // take it. Its rules are the ones that count, so the local entry goes.
+    resolveProposal(proposal.id);
+    recordCall(toolName, args, "refused", `Venue record refused: ${description}`);
+    return fail(
+      `The venue record refused this change: ${settlement.message ?? "no reason given"}\n` +
+        `Proposed: ${description}\n` +
+        `Nothing was changed. If the message says the venue moved on, call get_venue_overview ` +
+        `and propose again against the current plan.`
     );
   }
-  if (verdict.impact.gainedStepFree.length) {
-    impactLines.push(
-      `Would restore step-free access to: ${verdict.impact.gainedStepFree.join(", ")}.`
-    );
-  }
-  if (!impactLines.length) impactLines.push("No change to step-free reachability.");
 
-  recordCall(toolName, args, "queued", `Queued for review: ${description}`);
+  // Prefer what the server computed, since that is what the reviewer sees.
+  const current = getAgentSession().proposals.find((item) => item.id === proposal.id) ?? proposal;
+  let where = "No venue record is loaded, so it is held on this page only.";
+  if (settlement.status === "saved") where = "It is on the venue record and survives a refresh.";
+  if (settlement.status === "unreachable") {
+    where =
+      `The venue record could not be reached (${settlement.message ?? "no answer"}), ` +
+      "so it is held on this page only until it can be.";
+  }
+
+  recordCall(toolName, args, "queued", `Queued for review: ${current.description}`);
   return ok(
-    `This change is geometrically consistent with the rest of the plan, and is queued for ` +
-      `human review (${proposal.id}).\n` +
-      `Proposed: ${description}\n` +
-      `${impactLines.join(" ")}\n\n` +
+    `This change is consistent with the rest of the plan and is queued for human review ` +
+      `(${proposal.id}).\n` +
+      `Proposed: ${current.description}\n` +
+      `${impactSentence(current.impact)}\n${where}\n\n` +
       `The gate checked that the change does not contradict the plan. It cannot check whether ` +
       `the report is true of the building — only a person can. If the venue declines it, the ` +
       `report stays on the record as a disputed claim rather than being deleted.`
@@ -171,6 +233,8 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
   // untrustedContentHint is for. Labels are also stripped of control characters
   // and capped on the way in, and a person approves each one.
   const readOnly = { readOnlyHint: true, untrustedContentHint: true } as const;
+  // Write tools echo venue labels too, in their refusals and option lists.
+  const writes = { untrustedContentHint: true } as const;
 
   const tools: ToolDefinition[] = [
     {
@@ -212,7 +276,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         properties: {
           type: {
             type: "string",
-            enum: ["entrance", "elevator", "stairs", "restroom", "destination"],
+            enum: [...LANDMARK_TYPES],
             description: "Optional filter by landmark type."
           }
         },
@@ -269,12 +333,19 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         if (!to) return fail("Pass a destination in `to`. Use list_destinations to see the options.");
 
         const stepFree = bool(args, "step_free", true);
-        const { plan, from, to: target, fallbackUsed } = planRoute(scene, {
+        const { plan, from, to: target, fallbackUsed, fromUnresolved } = planRoute(scene, {
           to,
           from: str(args, "from") || null,
           stepFree
         });
 
+        if (fromUnresolved) {
+          recordCall("find_step_free_route", args, "error", `unknown origin "${str(args, "from")}"`);
+          return fail(
+            `No landmark in ${scene.name} matches the starting point "${str(args, "from")}". ` +
+              `Call list_destinations for valid ids, or leave \`from\` out to start at the main entrance.`
+          );
+        }
         if (!target) {
           recordCall("find_step_free_route", args, "error", `unknown destination "${to}"`);
           return fail(
@@ -367,7 +438,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           recordCall("describe_room", args, "error", `unknown room "${query}"`);
           return fail(
             `No room in ${scene.name} matches "${query}". Known rooms: ` +
-              `${scene.rooms.map((item) => `${item.label} (${item.id})`).join(", ")}.`
+              `${named(scene.rooms)}.`
           );
         }
         const neighbours = adjacentRooms(scene, room.id);
@@ -398,7 +469,8 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
       description:
         "Audit the whole venue for step-free access: which destinations are reachable from " +
         "the main entrance without steps, which are not and why, which doors are recorded " +
-        "as barriers, and which doorways are too narrow for a wheelchair.",
+        "as barriers, and every doorway's clear width so the person can judge it against " +
+        "their own equipment. Use check_route_clearance for one person's needs on one route.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: readOnly,
       execute: (args) => {
@@ -542,11 +614,18 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
 
         const minWidthMm = num(args, "minimum_clear_width_mm");
         const stepFree = bool(args, "require_step_free", true);
-        const { plan, from, to: target, fallbackUsed } = planRoute(scene, {
+        const { plan, from, to: target, fallbackUsed, fromUnresolved } = planRoute(scene, {
           to,
           from: str(args, "from") || null,
           stepFree
         });
+        if (fromUnresolved) {
+          recordCall("check_route_clearance", args, "error", `unknown origin "${str(args, "from")}"`);
+          return fail(
+            `No landmark in ${scene.name} matches the starting point "${str(args, "from")}". ` +
+              `Call list_destinations for valid ids, or leave \`from\` out to start at the main entrance.`
+          );
+        }
         if (!target) {
           recordCall("check_route_clearance", args, "error", `unknown destination "${to}"`);
           return fail(`No landmark in ${scene.name} matches "${to}". Call list_destinations for valid ids.`);
@@ -571,17 +650,17 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
 
         const limiting = minWidthMm === null
           ? []
-          : routeDoors.filter((door) => door.width * 1000 < minWidthMm);
+          : routeDoors.filter((door) => Math.round(door.width * 1000) < minWidthMm);
         const unconfirmed = routeDoors.filter(
           (door) =>
             door.confidence < CONFIDENCE_FLOOR || door.evidence.width.confidence < CONFIDENCE_FLOOR
         );
         const routeDoorIds = new Set(routeDoors.map((door) => door.id));
-        const disputed = getAgentSession().disputes.filter((dispute) => {
-          const mutation = dispute.mutation as { doorId?: string; entityId?: string } | null;
-          const id = mutation?.doorId ?? mutation?.entityId;
-          return id !== undefined && routeDoorIds.has(id);
-        });
+        const disputed = getAgentSession().disputes.filter(
+          (dispute) =>
+            dispute.mutation !== null &&
+            affectedDoorIds(dispute.mutation).some((id) => routeDoorIds.has(id))
+        );
         const narrowest = routeDoors.reduce<(typeof routeDoors)[number] | null>(
           (best, door) => (best === null || door.width < best.width ? door : best),
           null
@@ -702,19 +781,25 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           recordCall("propose_access_change", args, "error", `unknown door "${query}"`);
           return fail(
             `No doorway in ${scene.name} matches "${query}". The doorways here are: ` +
-              `${scene.doors.map((item) => `${item.label} (${item.id})`).join(", ")}.`
+              `${named(scene.doors)}.`
           );
         }
-        const reason = str(args, "reason");
-        if (!reason) {
-          return fail("Say what the person observed in `reason` — it is kept as provenance.");
+        const missingReason = requireReason(args);
+        if (missingReason) return missingReason;
+        const stepFree = boolStrict(args, "step_free");
+        if (stepFree === null) {
+          // Defaulting here would file "blocked" on a visitor's behalf when
+          // they never said so. Ask instead.
+          return fail(
+            "Pass `step_free` as true (the doorway is step-free now) or false (it is blocked now)."
+          );
         }
 
         return submitMutation(context, "propose_access_change", args, {
           kind: "set-door-accessible",
           doorId: door.id,
-          accessible: bool(args, "step_free", false),
-          reason,
+          accessible: stepFree,
+          reason: str(args, "reason"),
           cascade: true
         });
       }
@@ -755,7 +840,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
 
         const roomA = resolveRoom(scene, str(args, "room_a"));
         const roomB = resolveRoom(scene, str(args, "room_b"));
-        const known = scene.rooms.map((item) => `${item.label} (${item.id})`).join(", ");
+        const known = named(scene.rooms);
 
         if (!roomA || !roomB) {
           const missing = !roomA ? str(args, "room_a") : str(args, "room_b");
@@ -797,7 +882,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           label: { type: "string", description: "What the place is called." },
           type: {
             type: "string",
-            enum: ["entrance", "elevator", "stairs", "restroom", "destination"],
+            enum: [...LANDMARK_TYPES],
             description: "What kind of place it is."
           },
           in_room: {
@@ -814,7 +899,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         const label = str(args, "label");
         const landmarkType = str(args, "type");
         const reason = str(args, "reason");
-        const allowed = ["entrance", "elevator", "stairs", "restroom", "destination"];
+        const allowed: readonly string[] = LANDMARK_TYPES;
 
         if (!label) return fail("Give the landmark a name in `label`.");
         if (!allowed.includes(landmarkType)) {
@@ -830,14 +915,14 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           recordCall("propose_landmark", args, "error", `unknown room "${query}"`);
           return fail(
             `No room in ${scene.name} matches "${query}". The rooms here are: ` +
-              `${scene.rooms.map((item) => `${item.label} (${item.id})`).join(", ")}.`
+              `${named(scene.rooms)}.`
           );
         }
 
         return submitMutation(context, "propose_landmark", args, {
           kind: "add-landmark",
           label,
-          landmarkType: landmarkType as "entrance" | "elevator" | "stairs" | "restroom" | "destination",
+          landmarkType: landmarkType as LandmarkType,
           position: roomCentroid(room.polygon),
           reason
         });
@@ -898,7 +983,23 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
     }
   ];
 
-  return context.canPropose === false
-    ? tools.filter((tool) => tool.annotations?.readOnlyHint)
-    : tools;
+  const offered =
+    context.canPropose === false ? tools.filter((tool) => tool.annotations?.readOnlyHint) : tools;
+
+  // Every call is logged, including the argument-validation failures that
+  // return before a tool body reaches its own recordCall. The body's own
+  // entry wins when it made one, because it knows the outcome's meaning.
+  return offered.map((tool) => ({
+    ...tool,
+    annotations: tool.annotations ?? writes,
+    execute: async (args) => {
+      const before = getAgentSession().calls[0]?.id;
+      const result = await tool.execute(args);
+      if (getAgentSession().calls[0]?.id === before) {
+        const firstLine = result.content[0]?.text.split("\n")[0] ?? "";
+        recordCall(tool.name, args, result.isError ? "error" : "answered", firstLine.slice(0, 120));
+      }
+      return result;
+    }
+  }));
 }

@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Protocol
+from uuid import uuid4
 
 import boto3
 
@@ -37,7 +38,9 @@ class LocalObjectStore:
     ) -> StoredAsset:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(f"{path.suffix}.tmp")
+        # Unique per write: two writers sharing one temp name collide on the
+        # rename and one of them fails with a permission error on Windows.
+        temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
         temporary.write_bytes(data)
         temporary.replace(path)
         sha256 = hashlib.sha256(data).hexdigest()

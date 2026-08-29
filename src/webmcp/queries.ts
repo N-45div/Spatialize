@@ -14,6 +14,9 @@ type Landmark = SpatialScene["landmarks"][number];
 type RouteNode = SpatialScene["routeGraph"]["nodes"][number];
 type RouteEdge = SpatialScene["routeGraph"]["edges"][number];
 
+/** Extraction confidence below which a measurement is reported as unconfirmed. */
+export const CONFIDENCE_FLOOR = 0.85;
+
 export interface RouteStep {
   from: string;
   to: string;
@@ -36,11 +39,20 @@ export interface RoutePlan {
   blockers: { doorId: string; doorLabel: string; between: [string, string] }[];
 }
 
+/**
+ * Letters and digits in any script survive; everything else becomes a space.
+ * A label written in Japanese must not normalise to the empty string, or it
+ * would match every query that reaches the fallback matchers.
+ */
 function normalise(text: string) {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
-/** Match on id first, then exact label, then a contains-match on either side. */
+/**
+ * Match on id first, then exact label, then a label that contains the query.
+ * There is deliberately no "query contains the label" fallback: it made a
+ * query for "Quiet-room doorway" resolve to the room called "Quiet room".
+ */
 function matchByIdOrLabel<T extends { id: string; label: string }>(
   items: T[],
   query: string
@@ -50,8 +62,10 @@ function matchByIdOrLabel<T extends { id: string; label: string }>(
   return (
     items.find((item) => normalise(item.id) === wanted) ??
     items.find((item) => normalise(item.label) === wanted) ??
-    items.find((item) => normalise(item.label).includes(wanted)) ??
-    items.find((item) => wanted.includes(normalise(item.label))) ??
+    items.find((item) => {
+      const label = normalise(item.label);
+      return label !== "" && label.includes(wanted);
+    }) ??
     null
   );
 }
@@ -97,9 +111,13 @@ export function adjacentRooms(scene: SpatialScene, roomId: string) {
 
 function entranceNode(scene: SpatialScene): RouteNode | null {
   const entrance = scene.landmarks.find((item) => item.type === "entrance");
+  // A node with no landmark must never match a venue with no entrance:
+  // `undefined === undefined` would quietly start every route from it.
   return (
     scene.routeGraph.nodes.find(
-      (node) => node.landmarkId === entrance?.id || node.landmarkId === "entrance"
+      (node) =>
+        Boolean(node.landmarkId) &&
+        (node.landmarkId === entrance?.id || node.landmarkId === "entrance")
     ) ?? null
   );
 }
@@ -125,9 +143,25 @@ function nodeForLandmark(scene: SpatialScene, landmark: Landmark): RouteNode | n
   );
 }
 
+function adjacency(scene: SpatialScene, stepFree: boolean) {
+  const neighbours = new Map<string, { node: string; edge: RouteEdge }[]>();
+  for (const edge of scene.routeGraph.edges) {
+    if (stepFree && !edge.accessible) continue;
+    (neighbours.get(edge.from) ?? neighbours.set(edge.from, []).get(edge.from)!).push({
+      node: edge.to,
+      edge
+    });
+    (neighbours.get(edge.to) ?? neighbours.set(edge.to, []).get(edge.to)!).push({
+      node: edge.from,
+      edge
+    });
+  }
+  return neighbours;
+}
+
 function dijkstra(scene: SpatialScene, startId: string, targetId: string, stepFree: boolean) {
   const nodes = new Map(scene.routeGraph.nodes.map((node) => [node.id, node]));
-  const usable = scene.routeGraph.edges.filter((edge) => (stepFree ? edge.accessible : true));
+  const neighbours = adjacency(scene, stepFree);
 
   const distances = new Map<string, number>([[startId, 0]]);
   const previous = new Map<string, { node: string; edge: RouteEdge }>();
@@ -147,9 +181,7 @@ function dijkstra(scene: SpatialScene, startId: string, targetId: string, stepFr
     remaining.delete(current);
     if (current === targetId) break;
 
-    for (const edge of usable) {
-      if (edge.from !== current && edge.to !== current) continue;
-      const neighbour = edge.from === current ? edge.to : edge.from;
+    for (const { node: neighbour, edge } of neighbours.get(current) ?? []) {
       if (!remaining.has(neighbour)) continue;
       const candidate = currentDistance + edge.distance;
       if (candidate < (distances.get(neighbour) ?? Infinity)) {
@@ -236,6 +268,15 @@ const EMPTY_PLAN: RoutePlan = {
   blockers: []
 };
 
+export interface PlannedRoute {
+  plan: RoutePlan;
+  from: Landmark | null;
+  to: Landmark | null;
+  fallbackUsed: boolean;
+  /** A starting point was asked for and nothing in the venue matched it. */
+  fromUnresolved: boolean;
+}
+
 /**
  * Plan a route between two landmarks. When stepFree is asked for and no such
  * route exists, we deliberately fall back to the unrestricted graph so the
@@ -244,48 +285,86 @@ const EMPTY_PLAN: RoutePlan = {
 export function planRoute(
   scene: SpatialScene,
   options: { from?: string | null; to: string; stepFree?: boolean }
-): { plan: RoutePlan; from: Landmark | null; to: Landmark | null; fallbackUsed: boolean } {
+): PlannedRoute {
   const target = resolveLandmark(scene, options.to);
   const origin = options.from ? resolveLandmark(scene, options.from) : null;
-  if (!target) return { plan: EMPTY_PLAN, from: origin, to: null, fallbackUsed: false };
+  const fromUnresolved = Boolean(options.from) && origin === null;
+  const base = { from: origin, to: target, fallbackUsed: false, fromUnresolved };
+
+  if (!target || fromUnresolved) return { ...base, plan: EMPTY_PLAN };
 
   const startNode = origin ? nodeForLandmark(scene, origin) : entranceNode(scene);
   const targetNode = nodeForLandmark(scene, target);
-  if (!startNode || !targetNode) {
-    return { plan: EMPTY_PLAN, from: origin, to: target, fallbackUsed: false };
-  }
+  if (!startNode || !targetNode) return { ...base, plan: EMPTY_PLAN };
 
   const stepFree = options.stepFree ?? true;
   const direct = dijkstra(scene, startNode.id, targetNode.id, stepFree);
-  if (direct) {
-    return { plan: toPlan(scene, direct, stepFree), from: origin, to: target, fallbackUsed: false };
-  }
+  if (direct) return { ...base, plan: toPlan(scene, direct, stepFree) };
 
-  if (!stepFree) return { plan: EMPTY_PLAN, from: origin, to: target, fallbackUsed: false };
+  if (!stepFree) return { ...base, plan: EMPTY_PLAN };
 
   const anyRoute = dijkstra(scene, startNode.id, targetNode.id, false);
-  if (!anyRoute) return { plan: EMPTY_PLAN, from: origin, to: target, fallbackUsed: false };
-  return { plan: toPlan(scene, anyRoute, false), from: origin, to: target, fallbackUsed: true };
+  if (!anyRoute) return { ...base, plan: EMPTY_PLAN };
+  return { ...base, plan: toPlan(scene, anyRoute, false), fallbackUsed: true };
+}
+
+/**
+ * Every landmark reachable from the main entrance without steps, by id. One
+ * search from the entrance, not one per landmark — the same rule the server
+ * applies when it computes a proposal's impact.
+ */
+export function stepFreeReachableIds(scene: SpatialScene): Set<string> {
+  const start = entranceNode(scene);
+  if (!start) return new Set();
+  const neighbours = adjacency(scene, true);
+  const seen = new Set<string>([start.id]);
+  const frontier = [start.id];
+  while (frontier.length) {
+    const current = frontier.pop()!;
+    for (const { node } of neighbours.get(current) ?? []) {
+      if (!seen.has(node)) {
+        seen.add(node);
+        frontier.push(node);
+      }
+    }
+  }
+  return new Set(
+    scene.landmarks
+      .filter((item) => item.type !== "entrance")
+      .filter((item) => {
+        const node = nodeForLandmark(scene, item);
+        return node !== null && seen.has(node.id);
+      })
+      .map((item) => item.id)
+  );
 }
 
 /** Which destinations are reachable step-free from the main entrance. */
 export function accessibilitySummary(scene: SpatialScene) {
+  const reachableIds = stepFreeReachableIds(scene);
   const reachable: string[] = [];
   const blocked: { label: string; blockers: string[] }[] = [];
 
   for (const landmark of scene.landmarks) {
     if (landmark.type === "entrance") continue;
+    if (reachableIds.has(landmark.id)) {
+      reachable.push(landmark.label);
+      continue;
+    }
+    // Only the blocked ones need the more expensive search, to name the barrier.
     const { plan, fallbackUsed } = planRoute(scene, { to: landmark.id, stepFree: true });
-    if (plan.found && !fallbackUsed) reachable.push(landmark.label);
-    else if (plan.found) {
-      blocked.push({ label: landmark.label, blockers: plan.blockers.map((item) => item.doorLabel) });
-    } else blocked.push({ label: landmark.label, blockers: [] });
+    blocked.push({
+      label: landmark.label,
+      blockers: plan.found && fallbackUsed ? plan.blockers.map((item) => item.doorLabel) : []
+    });
   }
 
   return {
     reachable,
+    reachableIds,
     blocked,
     inaccessibleDoors: scene.doors.filter((door) => !door.accessible).map((door) => door.label),
+    inaccessibleDoorIds: new Set(scene.doors.filter((door) => !door.accessible).map((door) => door.id)),
     narrowDoors: scene.doors
       .filter((door) => door.width < 0.85)
       .map((door) => ({ label: door.label, width: door.width }))
@@ -293,7 +372,7 @@ export function accessibilitySummary(scene: SpatialScene) {
 }
 
 /** Entities the extraction was unsure about, plus any open review issues. */
-export function dataIssues(scene: SpatialScene, threshold = 0.85) {
+export function dataIssues(scene: SpatialScene, threshold = CONFIDENCE_FLOOR) {
   const lowConfidence = [
     ...scene.rooms.map((item) => ({
       kind: "room" as const,
@@ -347,20 +426,24 @@ export function roomCentroid(polygon: Point[]): Point {
   return [x / (3 * twiceArea), z / (3 * twiceArea)];
 }
 
-/** Sample points along a polygon boundary at roughly `step` metre intervals. */
-function sampleBoundary(polygon: Point[], step = 0.25): Point[] {
-  const points: Point[] = [];
-  for (let index = 0; index < polygon.length; index += 1) {
-    const [x0, z0] = polygon[index];
-    const [x1, z1] = polygon[(index + 1) % polygon.length];
-    const length = Math.hypot(x1 - x0, z1 - z0);
-    const count = Math.max(1, Math.ceil(length / step));
-    for (let part = 0; part < count; part += 1) {
-      const t = part / count;
-      points.push([x0 + (x1 - x0) * t, z0 + (z1 - z0) * t]);
+/** Closest points between two segments, and the distance between them. */
+function closestBetweenSegments(a0: Point, a1: Point, b0: Point, b1: Point) {
+  // Sample each segment finely enough that the answer is within a couple of
+  // centimetres, which is well inside the gate's 15 cm boundary tolerance.
+  // Exact segment-segment distance is more code than this earns.
+  const steps = 40;
+  let best = { point: a0, gap: Infinity };
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const a: Point = [a0[0] + (a1[0] - a0[0]) * t, a0[1] + (a1[1] - a0[1]) * t];
+    for (let j = 0; j <= steps; j += 1) {
+      const u = j / steps;
+      const b: Point = [b0[0] + (b1[0] - b0[0]) * u, b0[1] + (b1[1] - b0[1]) * u];
+      const gap = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (gap < best.gap) best = { point: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], gap };
     }
   }
-  return points;
+  return best;
 }
 
 /**
@@ -373,16 +456,15 @@ export function sharedBoundaryPoint(
   roomA: Room,
   roomB: Room
 ): { point: Point; gap: number } {
-  const samplesA = sampleBoundary(roomA.polygon);
-  const samplesB = sampleBoundary(roomB.polygon);
-
-  let best: { point: Point; gap: number } = { point: samplesA[0], gap: Infinity };
-  for (const a of samplesA) {
-    for (const b of samplesB) {
-      const gap = Math.hypot(a[0] - b[0], a[1] - b[1]);
-      if (gap < best.gap) {
-        best = { point: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], gap };
-      }
+  let best: { point: Point; gap: number } = { point: roomA.polygon[0], gap: Infinity };
+  for (let i = 0; i < roomA.polygon.length; i += 1) {
+    const a0 = roomA.polygon[i];
+    const a1 = roomA.polygon[(i + 1) % roomA.polygon.length];
+    for (let j = 0; j < roomB.polygon.length; j += 1) {
+      const b0 = roomB.polygon[j];
+      const b1 = roomB.polygon[(j + 1) % roomB.polygon.length];
+      const candidate = closestBetweenSegments(a0, a1, b0, b1);
+      if (candidate.gap < best.gap) best = candidate;
     }
   }
   return best;

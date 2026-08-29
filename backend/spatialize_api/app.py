@@ -1,12 +1,13 @@
 import json
 import mimetypes
+import secrets
 from dataclasses import asdict
 from typing import Annotated
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .agents.tools import SceneSession
 from .agents.voice import AgentUnavailable, DisabledVoiceAgent, GeminiVoiceAgent, VoiceAgent
@@ -168,7 +169,8 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found") from error
 
     def require_venue(token: str | None) -> None:
-        if active_settings.venue_token and token != active_settings.venue_token:
+        expected = active_settings.venue_token
+        if expected and not secrets.compare_digest(token or "", expected):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the venue team can decide a proposal",
@@ -184,6 +186,8 @@ def create_app(
         record = load_run(run_id)
         try:
             proposal = review.propose(record, request)
+        except ProposalConflict as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         except SceneRejected as error:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
@@ -203,14 +207,20 @@ def create_app(
         require_venue(x_venue_token)
         record = load_run(run_id)
         try:
-            proposal, record = review.approve(record, proposal_id)
+            proposal, record, scene_data = review.approve(record, proposal_id)
         except KeyError as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found") from error
         except (ProposalConflict, SceneRejected) as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except (FileNotFoundError, ValidationError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The proposal's candidate scene is no longer valid; ask for it again",
+            ) from error
         payload = {
             "proposal": json.loads(proposal.model_dump_json(by_alias=True)),
             "run": json.loads(record.model_dump_json(by_alias=True)),
+            "scene": scene_data,
         }
         return Response(content=json.dumps(payload), media_type=JSON_TYPE)
 

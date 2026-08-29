@@ -16,13 +16,6 @@ const PERSIST_LABEL = {
   failed: "Could not reach the venue record. Held in this tab."
 } as const;
 
-const OUTCOME_LABEL = {
-  answered: "answered",
-  queued: "queued",
-  refused: "refused",
-  error: "error"
-} as const;
-
 /**
  * The three prompts that walk a first-time visitor through the whole idea:
  * an answer computed from geometry, a change that survives the gate and waits
@@ -63,7 +56,7 @@ export function AgentPanel({
   status: WebMCPStatus;
   canPropose: boolean;
   onApprove: (proposal: Proposal) => void;
-  onReject: (id: string) => void;
+  onReject: (proposal: Proposal) => void;
 }) {
   const session = useSyncExternalStore(subscribeToAgentSession, getAgentSession, getAgentSession);
   const [open, setOpen] = useState(true);
@@ -132,13 +125,23 @@ export function AgentPanel({
                   <small className="proposal-reason">“{proposal.reason}”</small>
                   <small className="proposal-impact">{impactLine(proposal)}</small>
                   <small className={`proposal-persist ${proposal.persisted}`}>
-                    {PERSIST_LABEL[proposal.persisted]}
+                    {proposal.persisted === "failed" && proposal.failure
+                      ? `Not on the venue record: ${proposal.failure}. Held in this tab.`
+                      : PERSIST_LABEL[proposal.persisted]}
                   </small>
                   <div className="proposal-actions">
-                    <button className="approve" onClick={() => onApprove(proposal)}>
+                    <button
+                      className="approve"
+                      disabled={proposal.persisted === "saving"}
+                      onClick={() => onApprove(proposal)}
+                    >
                       Approve
                     </button>
-                    <button className="reject" onClick={() => onReject(proposal.id)}>
+                    <button
+                      className="reject"
+                      disabled={proposal.persisted === "saving"}
+                      onClick={() => onReject(proposal)}
+                    >
                       Reject
                     </button>
                   </div>
@@ -197,7 +200,7 @@ export function AgentPanel({
                   <li key={entry.id} className={entry.outcome}>
                     <div>
                       <code>{entry.tool}</code>
-                      <span className="outcome">{OUTCOME_LABEL[entry.outcome]}</span>
+                      <span className="outcome">{entry.outcome}</span>
                     </div>
                     <small>{entry.summary}</small>
                     <time>{ago(entry.at)}</time>

@@ -1,3 +1,5 @@
+import type { AccessibilityImpact, SceneMutation } from "../webmcp/gate";
+
 export interface IngestionRun {
   runId: string;
   status: "source-stored" | "extracting" | "review-required" | "approved" | "failed";
@@ -128,10 +130,28 @@ export async function approveRun(
   return response.json() as Promise<IngestionRun>;
 }
 
-export interface ReviewImpact {
-  lostStepFree: string[];
-  gainedStepFree: string[];
-  newlyBlockedDoors: string[];
+/**
+ * The venue role is a shared token. It arrives once in the URL (`?venue=…`),
+ * is kept in this browser, and is sent only on approve and decline. Nothing
+ * in the page ever displays it.
+ */
+const VENUE_TOKEN_KEY = "spatialize-venue-token";
+
+export function rememberVenueToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(VENUE_TOKEN_KEY, token);
+  } catch {
+    /* storage unavailable: the token is simply not remembered */
+  }
+}
+
+function venueHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem(VENUE_TOKEN_KEY);
+    return token ? { "X-Venue-Token": token } : {};
+  } catch {
+    return {};
+  }
 }
 
 export interface ReviewProposalRecord {
@@ -141,7 +161,7 @@ export interface ReviewProposalRecord {
   mutation: Record<string, unknown>;
   status: "pending" | "approved" | "declined";
   baseSceneVersion: number;
-  impact: ReviewImpact;
+  impact: AccessibilityImpact;
   proposedAt: string;
   decidedAt: string | null;
   resultingSceneVersion: number | null;
@@ -170,16 +190,14 @@ export async function fetchReview(runId: string): Promise<ReviewLedger> {
   return response.json() as Promise<ReviewLedger>;
 }
 
+/**
+ * A proposal is a mutation, never a scene. The server applies it to its own
+ * copy of the venue, so a proposal cannot carry anything its description
+ * does not say.
+ */
 export async function postProposal(
   runId: string,
-  body: {
-    id: string;
-    description: string;
-    reason: string;
-    mutation: Record<string, unknown>;
-    baseSceneVersion: number;
-    candidateScene: unknown;
-  }
+  body: { id: string; mutation: SceneMutation; baseSceneVersion: number }
 ): Promise<ReviewProposalRecord> {
   const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals`, {
     method: "POST",
@@ -190,15 +208,23 @@ export async function postProposal(
   return response.json() as Promise<ReviewProposalRecord>;
 }
 
+export interface ApprovalResult {
+  proposal: ReviewProposalRecord;
+  run: IngestionRun;
+  /** The scene the server just installed, so the page need not refetch it. */
+  scene: unknown;
+}
+
 export async function approveProposalRemote(
   runId: string,
   proposalId: string
-): Promise<{ proposal: ReviewProposalRecord; run: IngestionRun }> {
+): Promise<ApprovalResult> {
   const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals/${proposalId}/approve`, {
-    method: "POST"
+    method: "POST",
+    headers: venueHeaders()
   });
   if (!response.ok) await readError(response, "Approval failed");
-  return response.json() as Promise<{ proposal: ReviewProposalRecord; run: IngestionRun }>;
+  return response.json() as Promise<ApprovalResult>;
 }
 
 export async function declineProposalRemote(
@@ -206,7 +232,8 @@ export async function declineProposalRemote(
   proposalId: string
 ): Promise<ReviewProposalRecord> {
   const response = await fetch(`${apiBaseUrl}/api/runs/${runId}/proposals/${proposalId}/decline`, {
-    method: "POST"
+    method: "POST",
+    headers: venueHeaders()
   });
   if (!response.ok) await readError(response, "Decline failed");
   return response.json() as Promise<ReviewProposalRecord>;

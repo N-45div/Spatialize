@@ -21,8 +21,10 @@ Spatialize existed before this challenge. It was built for the Backblaze
 Generative Media Hackathon and **its last commit before the WebMCP Submission
 Period opened was `04e9ad8`, dated 3 August 2026.**
 
-The Submission Period opened 25 August 2026. **Every commit below is new work,
-and the entire WebMCP surface lives in files that did not exist before it.**
+The Submission Period opened 25 August 2026. **Everything after `04e9ad8` is new
+work, and the entire WebMCP surface lives in files that did not exist before
+it.** The seven commits below laid the layers in order; the commits after them
+are the persistence, clearance and review-fix work described further down.
 
 ```
 91316aa  feat(webmcp): make the agent surface legible, and stop asking the model to do arithmetic
@@ -36,8 +38,9 @@ fe62ae0  feat(webmcp): compute routes and accessibility from validated geometry
 04e9ad8  ← everything at or below this commit is prior work (3 Aug 2026)
 ```
 
-`git log 04e9ad8..HEAD` reproduces exactly this list. Every commit builds,
-typechecks, and passes its tests in isolation.
+`git log --oneline 04e9ad8..HEAD` lists every commit added since the period
+opened, these seven first. Each of the seven builds, typechecks and passes its
+tests in isolation.
 
 ### What is new
 
@@ -53,7 +56,7 @@ typechecks, and passes its tests in isolation.
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
 | Review ledger (server) | `backend/spatialize_api/review.py` | Proposals, decisions and audit persisted; the gate that counts |
 | Review sync (client) | `src/webmcp/session.ts`, `src/lib/api.ts` | Hydrate from the ledger, post proposals, decide through the server |
-| 83 new tests | `tests/webmcp-*.test.ts` (71), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (11) | Both gate paths, every tool, the contract, persistence across processes |
+| 105 new tests | `tests/webmcp-*.test.ts` (85), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (19) | Both gate paths, every tool, the contract, persistence across processes |
 
 ### What is unchanged prior work
 
@@ -308,23 +311,32 @@ an agent makes is posted to the run's review ledger on the server and stored in
 the same object store that holds the venue's scene versions. A page refresh, or
 a different visitor's agent on a different device, hydrates from that ledger.
 
-The server does not trust the browser's gate. Each proposal carries the full
-candidate scene; the backend re-runs the same Pydantic topology validator,
-checks the candidate is a revision of *this* venue (same id, source hash and
-dimensions), and computes the accessibility impact from its own copy. A
-candidate that fails is refused with the rule and never stored. Approval checks
-the proposal was made against the scene version the venue is currently on — one
-made against version 3 cannot be approved once the venue is on version 4 — and
-then writes a new version through the same path every other scene change
-takes. Proposals are idempotent on their id, so an agent that retries does not
-file twice.
+The server does not trust the browser's gate, and it does not accept a scene
+from the browser at all. A proposal is the mutation — five fields — and the
+backend applies it to *its own* copy of the venue, runs the same Pydantic
+topology validator on the result, and computes the accessibility impact from
+that. So a proposal cannot carry anything its description does not say: a
+"rename this room" cannot also widen a door or clear the review issues, because
+the server never sees a scene the client built. (The first version of this
+feature did accept a client candidate, and a review proved exactly that attack.
+It is fixed, and a test now asserts the installed scene differs from the base
+only where the mutation says.)
+
+A proposal drafted against a scene version the venue has since moved past is
+refused when it is made, and again if it is somehow approved later. Approval
+writes a new version through the same path every other scene change takes, and
+drops the run back to needs-review with an issue naming the change, so
+publishing stays a deliberate second step. Proposals are idempotent on their
+id, and every write to one run's ledger is serialised behind a per-run lock —
+without it, a proposal and its own audit entry arriving together lost one of
+the two, every time.
 
 ```
 GET  /api/runs/{id}/review                        the ledger
-POST /api/runs/{id}/proposals                     validate, store, compute impact
-POST /api/runs/{id}/proposals/{pid}/approve       version check, new scene version
+POST /api/runs/{id}/proposals                     apply the mutation server-side, validate, store
+POST /api/runs/{id}/proposals/{pid}/approve       version check, new scene version, scene returned
 POST /api/runs/{id}/proposals/{pid}/decline       kept, status "declined"
-POST /api/runs/{id}/audit                         tool-call audit entries
+POST /api/runs/{id}/audit                         tool-call audit entries, batched
 ```
 
 The dock shows, per proposal, whether it is on the venue record or held only
@@ -350,11 +362,18 @@ turning circle at all.
 ## Honesty box
 
 - This is **rehearsal** guidance, not live navigation, and no safety claim is made.
-- The review ledger is one JSON object per run, rewritten on each change.
-  Two venue reviewers deciding in the same second would race; the second write
-  wins. Fine for a venue team, not for a stadium's worth of concurrent agents.
-- The venue role is a shared token in a header, not accounts. Unset for the
+- The review ledger is one JSON object per run, serialised behind a per-run
+  lock *within one server process*. Two server instances would still race.
+  Fine for a single-instance deployment, which is what this is.
+- The venue role is a shared token in a header, not accounts. A reviewer
+  arrives once with `?venue=<token>` and the browser keeps it; unset for the
   open demo, so anyone can approve or decline there.
+- The voice path (`/ask`) still writes scene versions directly, as it did
+  before this work, without a proposal or a ledger entry. The agent path is the
+  one gated here; folding voice edits into the same queue is the next step.
+- Server-side impact matches the client's rule for a landmark without its own
+  route node (nearest node). A landmark an agent proposes has no node of its
+  own, so this parity is what keeps the two from disagreeing about it.
 - Route quality is bounded by extraction quality. `list_data_issues` exists so an
   agent can surface exactly that rather than paper over it.
 - WebMCP is an origin trial (Chrome 149–156). Outside a WebMCP browser the page

@@ -21,7 +21,6 @@ import {
 
 const RUN_STORAGE_KEY = "spatialize-run-id";
 const TOUR_STORAGE_KEY = "spatialize-tour-done";
-import { routeToLandmark } from "./lib/routes";
 import { AgentPanel } from "./components/AgentPanel";
 import { useWebMCP } from "./webmcp/useWebMCP";
 import {
@@ -33,8 +32,13 @@ import {
   resolveProposal,
   type Proposal
 } from "./webmcp/session";
-import { approveProposalRemote, declineProposalRemote, fetchReview } from "./lib/api";
-import { planRoute } from "./webmcp/queries";
+import {
+  approveProposalRemote,
+  declineProposalRemote,
+  fetchReview,
+  rememberVenueToken
+} from "./lib/api";
+import { dataIssues, planRoute } from "./webmcp/queries";
 
 type Conversation = {
   question: string;
@@ -68,13 +72,15 @@ export default function App() {
   );
   // The chosen id is kept as-is; the effective destination is derived so a
   // venue swap falls back to that venue's first destination without an effect.
+  // Any landmark can be focused — an agent asking about the lift must see the
+  // lift — while the sidebar lists only the destination-type ones.
   const [destinationChoice, setDestination] = useState(destinations[0]?.id ?? "");
   const destination = useMemo(
     () =>
-      destinations.some((item) => item.id === destinationChoice)
+      scene.landmarks.some((item) => item.id === destinationChoice)
         ? destinationChoice
         : (destinations[0]?.id ?? ""),
-    [destinations, destinationChoice]
+    [scene, destinations, destinationChoice]
   );
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -110,6 +116,9 @@ export default function App() {
     const onHashChange = () =>
       setView(window.location.hash === "#studio" ? "studio" : "landing");
     window.addEventListener("hashchange", onHashChange);
+    // A venue reviewer arrives with ?venue=<token> once; it is kept in this
+    // browser and sent only when deciding a proposal.
+    rememberVenueToken(new URLSearchParams(window.location.search).get("venue"));
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
@@ -186,38 +195,26 @@ export default function App() {
     };
   }, []);
 
-  const route = useMemo(
-    () => (destination ? routeToLandmark(scene, destination) : []),
-    [scene, destination]
-  );
-  const selected = scene.landmarks.find((item) => item.id === destination);
-  const lowConfidence = [...scene.rooms, ...scene.doors, ...scene.landmarks].filter(
-    (item) => item.confidence < 0.85
-  ).length;
-  const routeDistance = useMemo(
-    () =>
-      route.slice(1).reduce((total, point, index) => {
-        const previous = route[index];
-        return total + Math.hypot(point[0] - previous[0], point[1] - previous[1]);
-      }, 0),
-    [route]
-  );
-
-  // The same computation the agent's routing tool runs, so the caption and the
-  // agent can never disagree about whether somewhere is reachable.
+  // One route computation feeds the drawn route, the caption and the agent's
+  // routing tool, so none of them can disagree about whether somewhere is
+  // reachable or how far it is.
   const accessPlan = useMemo(
     () => (destination ? planRoute(scene, { to: destination, stepFree: true }) : null),
     [scene, destination]
   );
   const blockedBy = accessPlan?.fallbackUsed ? accessPlan.plan.blockers[0]?.doorLabel : null;
+  const route = accessPlan && !accessPlan.fallbackUsed ? accessPlan.plan.positions : [];
+  const routeDistance = accessPlan?.plan.totalDistance ?? 0;
+  const selected = scene.landmarks.find((item) => item.id === destination);
+  const lowConfidence = dataIssues(scene).lowConfidence.length;
 
   // Publish this venue's tools to any agent in the browser. Registered once per
   // venue; swapping the floor plan re-registers and fires `toolchange`.
-  const webmcp = useWebMCP(
-    scene,
-    { focusLandmark: setDestination, setViewMode },
-    { canPropose: ingestionRun !== null }
-  );
+  // A venue record to propose against means a run *with a scene loaded*. During
+  // an upload the run exists before its scene does, and offering the write
+  // tools then would file proposals about the previous venue.
+  const canPropose = Boolean(ingestionRun && liveScene);
+  const webmcp = useWebMCP(scene, { focusLandmark: setDestination, setViewMode }, { canPropose });
 
   // Mirror the agent session to the run's review ledger on the server. The
   // scene version travels with it so a proposal is stamped with what it was
@@ -246,26 +243,43 @@ export default function App() {
     return <Landing onEnter={() => { window.location.hash = "#studio"; }} />;
   }
 
-  /** A person accepts an agent's proposed change; it is already gate-validated. */
   /**
-   * A person accepts an agent's proposal. With a run loaded the server does
-   * the installing — it re-validates the candidate, checks the proposal was
-   * made against the current scene version, and writes a new version. The
-   * tab only applies a proposal itself when there is no server to ask.
+   * The server said no to a decision — most often because another reviewer
+   * already made it, or the venue moved on. Rather than leave a dead card,
+   * take the server's word for what is pending now.
+   */
+  async function resyncAfterDecisionFailure(proposalId: string, error: unknown, action: string) {
+    recordCall(
+      "human_review",
+      { proposal: proposalId },
+      "error",
+      error instanceof Error ? error.message : `${action} failed`
+    );
+    if (!ingestionRun) return;
+    try {
+      hydrateAgentSession(await fetchReview(ingestionRun.runId));
+    } catch {
+      /* the ledger is unreachable too; the card stays until it is not */
+    }
+  }
+
+  /**
+   * A person accepts an agent's proposal. When the proposal is on the venue
+   * record the server does the installing — it re-checks the version and
+   * writes a new scene. A proposal that never reached the record (no run, or
+   * the record was unreachable) is applied in this tab from its gate-checked
+   * scene, and the dock has already said that is where it lives.
    */
   async function approveProposal(proposal: Proposal) {
-    if (ingestionRun) {
+    if (ingestionRun && proposal.persisted === "saved") {
       try {
-        const { run } = await approveProposalRemote(ingestionRun.runId, proposal.id);
+        const { run, scene: installed } = await approveProposalRemote(ingestionRun.runId, proposal.id);
         setIngestionRun(run);
-        await reloadScene(run.runId);
+        const parsed = parseScene(installed);
+        if (parsed) setLiveScene(parsed);
+        else await reloadScene(run.runId);
       } catch (error) {
-        recordCall(
-          "human_review",
-          { proposal: proposal.id },
-          "error",
-          error instanceof Error ? error.message : "Approval failed"
-        );
+        await resyncAfterDecisionFailure(proposal.id, error, "Approval");
         return;
       }
     } else if (proposal.scene) {
@@ -280,24 +294,19 @@ export default function App() {
    * building than the building's own record, so the disagreement is kept and
    * an agent can read it back through list_disputed_claims.
    */
-  async function rejectProposal(id: string) {
-    if (ingestionRun) {
+  async function rejectProposal(proposal: Proposal) {
+    if (ingestionRun && proposal.persisted === "saved") {
       try {
-        await declineProposalRemote(ingestionRun.runId, id);
+        await declineProposalRemote(ingestionRun.runId, proposal.id);
       } catch (error) {
-        recordCall(
-          "human_review",
-          { proposal: id },
-          "error",
-          error instanceof Error ? error.message : "Decline failed"
-        );
+        await resyncAfterDecisionFailure(proposal.id, error, "Decline");
         return;
       }
     }
-    const dispute = declineProposal(id);
+    const dispute = declineProposal(proposal.id);
     recordCall(
       "human_review",
-      { proposal: id },
+      { proposal: proposal.id },
       "refused",
       dispute ? `Declined, kept as disputed: ${dispute.description}` : "Declined by the venue team"
     );
@@ -421,6 +430,14 @@ export default function App() {
     });
     if (script) historyRef.current = [...historyRef.current.slice(-5), { question: asked, answer: script }];
     if (response.sceneChanged && ingestionRun) {
+      // The server wrote a new version. Carry the number, or every proposal
+      // an agent makes from now on is stamped stale and can never be approved.
+      const version = response.sceneVersion;
+      if (typeof version === "number") {
+        setIngestionRun((current) =>
+          current ? { ...current, sceneVersion: version, status: "review-required" } : current
+        );
+      }
       void reloadScene(ingestionRun.runId);
     }
     if (audioUrl) {
@@ -695,7 +712,7 @@ export default function App() {
           <AgentPanel
             scene={scene}
             status={webmcp}
-            canPropose={ingestionRun !== null}
+            canPropose={canPropose}
             onApprove={approveProposal}
             onReject={rejectProposal}
           />

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sampleScene } from "../src/data/sample-scene";
 import type { SpatialScene } from "../src/domain/spatial-scene";
-import { describeMutation, gateMutation } from "../src/webmcp/gate";
+import { affectedDoorIds, describeMutation, gateMutation } from "../src/webmcp/gate";
 import { accessibilitySummary } from "../src/webmcp/queries";
 
 function copyScene(): SpatialScene {
@@ -193,6 +193,29 @@ describe("topology gate on agent writes", () => {
     const note = verdict.scene.rooms.find((item) => item.id === "quiet")!.evidence.label.note!;
     expect([...note].every((c) => c.codePointAt(0)! >= 0x20)).toBe(true);
     expect(note).toContain("line one line two with a null");
+  });
+
+  it("does not report a rename as access lost and regained", () => {
+    const verdict = gateMutation(copyScene(), {
+      kind: "relabel",
+      entityKind: "landmark",
+      entityId: "quiet-mark",
+      label: "Sensory room",
+      reason: "the sign says Sensory Room"
+    });
+
+    expect(verdict.status).toBe("accepted");
+    if (verdict.status !== "accepted") return;
+    expect(verdict.impact).toEqual({ lostStepFree: [], gainedStepFree: [], newlyBlockedDoors: [] });
+  });
+
+  it("knows which mutations make a claim about a doorway's passability", () => {
+    expect(
+      affectedDoorIds({ kind: "set-door-accessible", doorId: "d1", accessible: false, reason: "r" })
+    ).toEqual(["d1"]);
+    expect(
+      affectedDoorIds({ kind: "relabel", entityKind: "door", entityId: "d1", label: "x", reason: "r" })
+    ).toEqual([]);
   });
 
   it("describes a mutation in words a venue team can act on", () => {
