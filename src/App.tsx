@@ -213,7 +213,11 @@ export default function App() {
 
   // Publish this venue's tools to any agent in the browser. Registered once per
   // venue; swapping the floor plan re-registers and fires `toolchange`.
-  const webmcp = useWebMCP(scene, { focusLandmark: setDestination, setViewMode });
+  const webmcp = useWebMCP(
+    scene,
+    { focusLandmark: setDestination, setViewMode },
+    { canPropose: ingestionRun !== null }
+  );
 
   // Mirror the agent session to the run's review ledger on the server. The
   // scene version travels with it so a proposal is stamped with what it was
@@ -691,6 +695,7 @@ export default function App() {
           <AgentPanel
             scene={scene}
             status={webmcp}
+            canPropose={ingestionRun !== null}
             onApprove={approveProposal}
             onReject={rejectProposal}
           />

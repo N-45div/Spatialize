@@ -40,7 +40,7 @@ describe("tool registration contract", () => {
   it("registers every tool with a name, description and object schema", () => {
     const { tools } = harness(copyScene());
 
-    expect(tools.size).toBe(12);
+    expect(tools.size).toBe(13);
     for (const tool of tools.values()) {
       expect(tool.name).toMatch(/^[a-z_]+$/);
       expect(tool.description.length).toBeGreaterThan(40);
@@ -391,6 +391,102 @@ describe("declined reports stay on the record", () => {
     await reportAndDecline(tools);
 
     expect(textOf(await call(tools, "check_accessibility"))).toContain("list_disputed_claims");
+  });
+});
+
+describe("tools as a function of page state", () => {
+  it("publishes only the read tools when there is no venue record to propose against", () => {
+    const context: ToolContext = {
+      getScene: () => copyScene(),
+      focusLandmark: () => undefined,
+      setViewMode: () => undefined,
+      canPropose: false
+    };
+
+    const names = buildTools(context).map((tool) => tool.name);
+
+    expect(names.some((name) => name.startsWith("propose_"))).toBe(false);
+    expect(names).toContain("find_step_free_route");
+    expect(names).toContain("check_route_clearance");
+  });
+});
+
+describe("route clearance for one person", () => {
+  it("says clear when every doorway on the route is wide enough and confirmed", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "check_route_clearance", { to: "gallery-mark", minimum_clear_width_mm: 760 })
+    );
+
+    expect(text).toContain("Verdict: CLEAR");
+    expect(text).toContain("for a 760 mm clearance");
+    expect(text).toContain("Narrowest doorway on the route");
+  });
+
+  it("says blocked and names every doorway that is too narrow", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "check_route_clearance", { to: "gallery-mark", minimum_clear_width_mm: 1800 })
+    );
+
+    expect(text).toContain("Verdict: BLOCKED");
+    expect(text).toContain("Too narrow: Gallery threshold (1600 mm)");
+  });
+
+  it("says blocked when the only route has steps", async () => {
+    const scene = copyScene();
+    const door = scene.doors.find((item) => item.id === "door-corridor-quiet")!;
+    door.accessible = false;
+    for (const edge of scene.routeGraph.edges) {
+      if (edge.doorId === door.id) edge.accessible = false;
+    }
+    const { tools } = harness(scene);
+
+    const text = textOf(await call(tools, "check_route_clearance", { to: "quiet-mark" }));
+
+    expect(text).toContain("Verdict: BLOCKED");
+    expect(text).toContain('Steps: the only route passes "Quiet-room doorway"');
+  });
+
+  it("says unknown rather than clear when a doorway measurement is unconfirmed", async () => {
+    const { tools } = harness(copyScene());
+
+    // The quiet-room doorway was extracted at 78% confidence and is flagged
+    // for review in the sample plan. Pretending that is a clear answer would
+    // be the exact overclaim the rest of the surface avoids.
+    const text = textOf(await call(tools, "check_route_clearance", { to: "quiet-mark" }));
+
+    expect(text).toContain("Verdict: UNKNOWN");
+    expect(text).toContain("Unconfirmed measurements: Quiet-room doorway");
+  });
+
+  it("says unknown when a visitor disputes a doorway on the route", async () => {
+    const { tools } = harness(copyScene());
+    await call(tools, "propose_access_change", {
+      door: "Gallery threshold",
+      step_free: false,
+      reason: "there is a lip here my chair cannot clear"
+    });
+    declineProposal(getAgentSession().proposals[0].id);
+
+    const text = textOf(
+      await call(tools, "check_route_clearance", { to: "gallery-mark", minimum_clear_width_mm: 760 })
+    );
+
+    expect(text).toContain("Verdict: UNKNOWN");
+    expect(text).toContain("Disputed by visitors");
+    expect(text).toContain("my chair cannot clear");
+  });
+
+  it("never claims more than a doorway-width and steps check", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(await call(tools, "check_route_clearance", { to: "gallery-mark" }));
+
+    expect(text).toContain("not measured on site");
+    expect(text).toContain("doorway-width and steps check only");
   });
 });
 

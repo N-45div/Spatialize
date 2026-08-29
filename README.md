@@ -15,7 +15,7 @@ Built for the **Backblaze Generative Media Hackathon** with
 **Architecture deep-dive:** [ARCHITECTURE.md](ARCHITECTURE.md)
 **WebMCP agent surface:** [WEBMCP.md](WEBMCP.md)
 
-## Agent-native: twelve WebMCP tools
+## Agent-native: thirteen WebMCP tools
 
 > Built for the **OpenAI WebMCP Challenge**. Everything in `src/webmcp/` is new
 > work added after 25 August 2026; prior work ends at commit `04e9ad8`
@@ -44,7 +44,7 @@ with `chrome://flags/#enable-webmcp-testing`, and your agent can:
 
 | reads | proposes (checked, then reviewed by a person) |
 |---|---|
-| `get_venue_overview` · `list_destinations` · `find_step_free_route` · `describe_room` · `check_accessibility` · `list_data_issues` · `list_disputed_claims` · `focus_view` | `propose_access_change` · `propose_doorway` · `propose_landmark` · `propose_label_correction` |
+| `get_venue_overview` · `list_destinations` · `find_step_free_route` · `describe_room` · `check_accessibility` · `list_data_issues` · `list_disputed_claims` · `check_route_clearance` · `focus_view` | `propose_access_change` · `propose_doorway` · `propose_landmark` · `propose_label_correction` |
 
 The agent dock inside the 3D viewport shows registration state, a live feed of
 tool calls, the approval queue with each change's real-world impact, and gate
@@ -115,7 +115,7 @@ ASSEMBLYAI_API_KEY                               # speech-to-text (needs B2 mode
 Tests:
 
 ```bash
-npm test                            # 73 frontend tests (65 added for WebMCP)
+npm test                            # 80 frontend tests (72 added for WebMCP)
 cd backend && .venv/Scripts/python -m pytest    # 30 API/agent/gate/review tests (11 added)
 ```
 

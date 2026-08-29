@@ -2,7 +2,7 @@
 
 **A building that answers your agent from geometry, and refuses it when it's wrong.**
 
-Spatialize publishes a venue's floor plan to any agent in the browser as twelve
+Spatialize publishes a venue's floor plan to any agent in the browser as thirteen
 WebMCP tools. Read tools answer from geometry, so a step-free route is *computed*,
 never estimated, and every doorway width is reported so the person applies their own
 threshold rather than ours. Write tools cannot touch the scene: a proposed change is
@@ -46,14 +46,14 @@ typechecks, and passes its tests in isolation.
 | WebMCP browser typings | `src/webmcp/types.ts` | WebMCP ships no TypeScript definitions yet |
 | Route & accessibility engine | `src/webmcp/queries.ts` | Pathfinding, blocker detection, step-free audit, room geometry |
 | The agent write gate | `src/webmcp/gate.ts` | Validates proposals, diffs their real-world impact |
-| Tool surface (12 tools) | `src/webmcp/tools.ts` | The published contract |
+| Tool surface (13 tools) | `src/webmcp/tools.ts` | The published contract |
 | Registration hook | `src/webmcp/useWebMCP.ts` | Registers per venue, tears down via `AbortSignal` |
 | Agent session store | `src/webmcp/session.ts` | Tool-call log, approval queue, refusals |
 | Agent dock UI | `src/components/AgentPanel.tsx` | Watch the agent work, approve or reject its changes |
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
 | Review ledger (server) | `backend/spatialize_api/review.py` | Proposals, decisions and audit persisted; the gate that counts |
 | Review sync (client) | `src/webmcp/session.ts`, `src/lib/api.ts` | Hydrate from the ledger, post proposals, decide through the server |
-| 76 new tests | `tests/webmcp-*.test.ts` (64), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (11) | Both gate paths, every tool, the contract, persistence across processes |
+| 83 new tests | `tests/webmcp-*.test.ts` (71), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (11) | Both gate paths, every tool, the contract, persistence across processes |
 
 ### What is unchanged prior work
 
@@ -108,11 +108,31 @@ deterministic — the same input will always be rejected the same way.
 The agent can self-correct from that. A DOM-scraping agent gets a silent
 success and a corrupted building.
 
+**4. Check a route against your own needs, not a generic label.**
+`check_route_clearance` takes the narrowest doorway a specific person can pass,
+in millimetres, and whether steps rule a route out. It answers `CLEAR`,
+`BLOCKED` or `UNKNOWN` — and it says *unknown* rather than *clear* when a
+doorway on the route was extracted at low confidence or is the subject of an
+unresolved visitor dispute:
+
+```
+Verdict: UNKNOWN — the main entrance to Quiet room, 24 m.
+Narrowest doorway on the route: Quiet-room doorway at 1100 mm clear.
+Unconfirmed measurements: Quiet-room doorway (extracted at 78% confidence).
+Widths come from the floor plan, checked for consistency, not measured on site.
+Turning space, thresholds and gradients are not in this venue's data, so this
+is a doorway-width and steps check only.
+```
+
+That last paragraph is deliberate. The scene model does not hold turning
+circles, threshold heights or gradients, so the tool does not claim a
+wheelchair fits. It claims exactly what the data supports.
+
 ---
 
 ## The tool surface
 
-Eight read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
+Nine read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
 named `propose_*`, because nothing an agent does goes live by itself.
 
 | Tool | Kind | What it does |
@@ -124,6 +144,7 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `check_accessibility` | reads | Whole-venue step-free audit, every doorway width, open disputes |
 | `list_data_issues` | reads | Open validator issues and low-confidence extractions |
 | `list_disputed_claims` | reads | Reports the venue declined, kept on the record |
+| `check_route_clearance` | reads | One route against one person's width and step needs: clear, blocked or unknown |
 | `focus_view` | reads | Moves the page's 3D view so a person sees what the agent found |
 | `propose_access_change` | proposes | A doorway became blocked, or was cleared |
 | `propose_doorway` | proposes | A doorway the plan missed, named by the two rooms it joins |
@@ -131,7 +152,7 @@ named `propose_*`, because nothing an agent does goes live by itself.
 | `propose_label_correction` | proposes | The vision model misread a name |
 
 The page publishes this contract to visitors too — the agent dock has a
-**"Show the 12 tools this page publishes"** panel listing every tool, its
+**"Show the 13 tools this page publishes"** panel listing every tool, its
 read/propose kind, and its typed parameters. You can read the surface without
 opening the source.
 
@@ -139,10 +160,13 @@ opening the source.
 
 ## How WebMCP is implemented
 
-Tools are registered on `document.modelContext` once per venue, tied to an
-`AbortController` so that loading a different floor plan tears the old set down
-and fires `toolchange` — an idle agent learns the building changed underneath
-it. See `src/webmcp/useWebMCP.ts`:
+Tools are a function of page state, not a static list. They are registered on
+`document.modelContext` tied to an `AbortController`, and re-registered when
+either of two things changes: the venue on screen, or whether there is a venue
+record to propose against. Without a record the four `propose_*` tools are not
+offered at all — a proposal with nowhere to be kept would be a lie — and the
+dock says so. Each change tears the old set down and fires `toolchange`, so an
+idle agent learns the surface moved. See `src/webmcp/useWebMCP.ts`:
 
 ```js
 document.modelContext.registerTool({

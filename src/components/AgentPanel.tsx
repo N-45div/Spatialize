@@ -34,6 +34,11 @@ const TRY_THESE = [
   { arc: "refuse", text: "Add a doorway between the main lobby and the quiet room." }
 ] as const;
 
+function kindLabel(readOnly: boolean, canPropose: boolean) {
+  if (readOnly) return "reads";
+  return canPropose ? "proposes" : "proposes · needs a venue record";
+}
+
 function ago(timestamp: number) {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
@@ -50,11 +55,13 @@ function impactLine(proposal: Proposal) {
 export function AgentPanel({
   scene,
   status,
+  canPropose,
   onApprove,
   onReject
 }: {
   scene: SpatialScene;
   status: WebMCPStatus;
+  canPropose: boolean;
   onApprove: (proposal: Proposal) => void;
   onReject: (id: string) => void;
 }) {
@@ -108,6 +115,13 @@ export function AgentPanel({
           )}
 
           {state === "error" && <p className="agent-hint error">{status.error}</p>}
+
+          {state === "live" && !canPropose && (
+            <p className="agent-hint">
+              No venue record is loaded, so only the read tools are published. Reports need
+              somewhere to be kept; the propose tools appear the moment a venue is.
+            </p>
+          )}
 
           {pending > 0 && (
             <>
@@ -218,7 +232,7 @@ export function AgentPanel({
                   <div>
                     <code>{tool.name}</code>
                     <span className={tool.readOnly ? "kind read" : "kind write"}>
-                      {tool.readOnly ? "reads" : "proposes"}
+                      {kindLabel(tool.readOnly, canPropose)}
                     </span>
                   </div>
                   <p>{tool.description}</p>

@@ -63,6 +63,8 @@ export interface Dispute {
   id: string;
   description: string;
   reason: string;
+  /** What was proposed, so a route check can tell which doorway is contested. */
+  mutation: SceneMutation | null;
   reportedAt: number;
   declinedAt: number;
 }
@@ -142,6 +144,7 @@ export function hydrateAgentSession(ledger: ReviewLedger) {
       id: `dispute_${item.id}`,
       description: item.description,
       reason: item.reason,
+      mutation: item.mutation as SceneMutation,
       reportedAt: Date.parse(item.proposedAt),
       declinedAt: Date.parse(item.decidedAt ?? item.proposedAt)
     }))
@@ -225,6 +228,7 @@ export function declineProposal(id: string) {
     id: freshId("dispute"),
     description: proposal.description,
     reason: proposal.reason,
+    mutation: proposal.mutation,
     reportedAt: proposal.at,
     declinedAt: Date.now()
   };

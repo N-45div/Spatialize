@@ -1,7 +1,7 @@
 /**
  * Registers the Spatialize tool surface with the browser's WebMCP agent host.
  *
- * Each of the twelve tools in `./tools` is published with the standard call:
+ * Each of the thirteen tools in `./tools` is published with the standard call:
  *
  *   document.modelContext.registerTool({
  *     name: "find_step_free_route",
@@ -32,7 +32,12 @@ interface WebMCPHandlers {
   setViewMode: (mode: "2d" | "3d") => void;
 }
 
-export function useWebMCP(scene: SpatialScene, handlers: WebMCPHandlers): WebMCPStatus {
+export function useWebMCP(
+  scene: SpatialScene,
+  handlers: WebMCPHandlers,
+  options?: { canPropose?: boolean }
+): WebMCPStatus {
+  const canPropose = options?.canPropose ?? true;
   const [status, setStatus] = useState<WebMCPStatus>(() => ({
     supported: webmcpSupported(),
     registered: [],
@@ -56,7 +61,8 @@ export function useWebMCP(scene: SpatialScene, handlers: WebMCPHandlers): WebMCP
     const context: ToolContext = {
       getScene: () => sceneRef.current,
       focusLandmark: (id) => handlersRef.current.focusLandmark(id),
-      setViewMode: (mode) => handlersRef.current.setViewMode(mode)
+      setViewMode: (mode) => handlersRef.current.setViewMode(mode),
+      canPropose
     };
 
     const tools = buildTools(context);
@@ -84,8 +90,10 @@ export function useWebMCP(scene: SpatialScene, handlers: WebMCPHandlers): WebMCP
     });
 
     return () => controller.abort();
-    // Re-register only when the venue itself changes.
-  }, [scene.id]);
+    // Re-register when the venue changes, or when a venue record appears or
+    // goes away — the write tools exist only while there is one. Either way
+    // the browser fires toolchange and an idle agent learns the surface moved.
+  }, [scene.id, canPropose]);
 
   return status;
 }

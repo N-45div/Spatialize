@@ -30,7 +30,16 @@ export interface ToolContext {
   /** Move the 3D view to a landmark so the person sees what the agent found. */
   focusLandmark: (landmarkId: string) => void;
   setViewMode: (mode: "2d" | "3d") => void;
+  /**
+   * Whether there is a venue record to propose against. Without one a
+   * proposal has nowhere to be kept, so the write tools are not offered at
+   * all rather than offered and quietly local.
+   */
+  canPropose?: boolean;
 }
+
+/** Extraction confidence below which a measurement is reported as unconfirmed. */
+const CONFIDENCE_FLOOR = 0.85;
 
 function ok(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
@@ -163,7 +172,7 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
   // and capped on the way in, and a person approves each one.
   const readOnly = { readOnlyHint: true, untrustedContentHint: true } as const;
 
-  return [
+  const tools: ToolDefinition[] = [
     {
       name: "get_venue_overview",
       description:
@@ -498,6 +507,129 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
     },
 
     {
+      name: "check_route_clearance",
+      description:
+        "Check one route against a specific person's needs: the narrowest doorway they can " +
+        "pass, in millimetres, and whether steps rule it out. Answers clear, blocked or " +
+        "unknown — unknown when a doorway on the route has an unconfirmed measurement or an " +
+        "unresolved visitor dispute. Lists every limiting doorway so the person decides.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: { type: "string", description: "Destination landmark id or label." },
+          from: {
+            type: "string",
+            description: "Starting landmark id or label. Defaults to the main entrance."
+          },
+          minimum_clear_width_mm: {
+            type: "number",
+            description:
+              "Narrowest doorway the person can pass, in millimetres. For example 760 for many manual wheelchairs."
+          },
+          require_step_free: {
+            type: "boolean",
+            description: "Whether steps rule the route out. Defaults to true."
+          }
+        },
+        required: ["to"],
+        additionalProperties: false
+      },
+      annotations: readOnly,
+      execute: (args) => {
+        const scene = context.getScene();
+        const to = str(args, "to");
+        if (!to) return fail("Pass a destination in `to`. Use list_destinations to see the options.");
+
+        const minWidthMm = num(args, "minimum_clear_width_mm");
+        const stepFree = bool(args, "require_step_free", true);
+        const { plan, from, to: target, fallbackUsed } = planRoute(scene, {
+          to,
+          from: str(args, "from") || null,
+          stepFree
+        });
+        if (!target) {
+          recordCall("check_route_clearance", args, "error", `unknown destination "${to}"`);
+          return fail(`No landmark in ${scene.name} matches "${to}". Call list_destinations for valid ids.`);
+        }
+        const origin = from?.label ?? "the main entrance";
+        const need = minWidthMm === null ? "" : ` for a ${Math.round(minWidthMm)} mm clearance`;
+
+        if (!plan.found) {
+          recordCall("check_route_clearance", args, "answered", `${target.label}: unknown, no route`);
+          return ok(
+            `Verdict: UNKNOWN — no route from ${origin} to ${target.label} exists in the extracted ` +
+              `route graph, which usually means the floor-plan extraction missed a connection. ` +
+              `Call list_data_issues.`
+          );
+        }
+
+        const doorsById = new Map(scene.doors.map((door) => [door.id, door]));
+        const routeDoors = plan.steps
+          .map((step) => (step.doorId ? doorsById.get(step.doorId) : undefined))
+          .filter((door): door is NonNullable<typeof door> => door !== undefined);
+        const mm = (width: number) => `${Math.round(width * 1000)} mm`;
+
+        const limiting = minWidthMm === null
+          ? []
+          : routeDoors.filter((door) => door.width * 1000 < minWidthMm);
+        const unconfirmed = routeDoors.filter(
+          (door) =>
+            door.confidence < CONFIDENCE_FLOOR || door.evidence.width.confidence < CONFIDENCE_FLOOR
+        );
+        const routeDoorIds = new Set(routeDoors.map((door) => door.id));
+        const disputed = getAgentSession().disputes.filter((dispute) => {
+          const mutation = dispute.mutation as { doorId?: string; entityId?: string } | null;
+          const id = mutation?.doorId ?? mutation?.entityId;
+          return id !== undefined && routeDoorIds.has(id);
+        });
+        const narrowest = routeDoors.reduce<(typeof routeDoors)[number] | null>(
+          (best, door) => (best === null || door.width < best.width ? door : best),
+          null
+        );
+
+        let verdict: "CLEAR" | "BLOCKED" | "UNKNOWN" = "CLEAR";
+        if ((fallbackUsed && stepFree) || limiting.length) verdict = "BLOCKED";
+        else if (unconfirmed.length || disputed.length) verdict = "UNKNOWN";
+
+        const lines: string[] = [
+          `Verdict: ${verdict} — ${origin} to ${target.label}${need}, ${formatMetres(plan.totalDistance)}.`
+        ];
+        if (fallbackUsed && stepFree) {
+          lines.push(
+            `Steps: the only route passes ${plan.blockers.map((item) => `"${item.doorLabel}"`).join(", ")}, recorded as not step-free.`
+          );
+        }
+        if (limiting.length) {
+          lines.push(
+            `Too narrow: ${limiting.map((door) => `${door.label} (${mm(door.width)})`).join(", ")}.`
+          );
+        }
+        if (narrowest) lines.push(`Narrowest doorway on the route: ${narrowest.label} at ${mm(narrowest.width)} clear.`);
+        if (unconfirmed.length) {
+          lines.push(
+            `Unconfirmed measurements: ${unconfirmed
+              .map((door) => `${door.label} (extracted at ${Math.round(Math.min(door.confidence, door.evidence.width.confidence) * 100)}% confidence)`)
+              .join(", ")}.`
+          );
+        }
+        if (disputed.length) {
+          lines.push(
+            `Disputed by visitors: ${disputed.map((item) => `${item.description} — "${item.reason}"`).join("; ")}.`
+          );
+        }
+        lines.push(
+          "Widths come from the floor plan, checked for consistency, not measured on site. Turning " +
+            "space, thresholds and gradients are not in this venue's data, so this is a doorway-width " +
+            "and steps check only."
+        );
+
+        context.focusLandmark(target.id);
+        recordCall("check_route_clearance", args, "answered", `${target.label}: ${verdict.toLowerCase()}`);
+        return ok(lines.join("\n"));
+      }
+    },
+
+    {
       name: "focus_view",
       description:
         "Move the 3D venue view on this page to a landmark, and optionally switch between " +
@@ -765,4 +897,8 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
       }
     }
   ];
+
+  return context.canPropose === false
+    ? tools.filter((tool) => tool.annotations?.readOnlyHint)
+    : tools;
 }
