@@ -161,6 +161,11 @@ numbers are in [EVALS.md](EVALS.md).
   agent asks and reports, the server applies and stores, the venue declines,
   the tab is wiped and hydrated, and a later agent hears both sides. About five
   seconds, every run.
+- **Through a real WebMCP host** — `npm run host-check` launches Chrome with
+  the flag on and drives the same journey through the browser's own
+  `navigator.modelContextTesting.executeTool`, against the production bundle,
+  with a real click on Reject and a real page reload. **13 of 13** on Chrome
+  151. The first run was 8 of 13 and found a hydration race; see EVALS.md.
 
 ---
 

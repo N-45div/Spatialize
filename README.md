@@ -118,6 +118,7 @@ Tests:
 npm test                            # 100 frontend tests (92 added for WebMCP; includes e2e + evals)
 cd backend && .venv/Scripts/python -m pytest    # 38 API/agent/gate/review tests (19 added)
 npm run evals                       # journey + model tool-selection evals, see EVALS.md
+npm run host-check                  # the journey driven by Chrome's WebMCP host (flag on, both servers up)
 ```
 
 ## Deploy

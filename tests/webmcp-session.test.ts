@@ -94,18 +94,39 @@ describe("hydrating from the venue record", () => {
     expect(getAgentSession().calls.map((item) => item.summary)).toEqual(["second", "first"]);
   });
 
-  it("replaces whatever the tab held before", () => {
-    queueProposal({
+  it("keeps a proposal the tab made that the server has not caught up with", () => {
+    // The tools are live before the ledger fetch returns; an agent that acts
+    // in that window must not have its work wiped when hydration lands.
+    const local = queueProposal({
       mutation: { kind: "relabel", entityKind: "room", entityId: "quiet", label: "x", reason: "y" },
-      description: "local only",
+      description: "made before hydration landed",
       reason: "y",
       impact,
       scene: structuredClone(sampleScene)
     });
 
-    hydrateAgentSession(ledger({ proposals: [], calls: [] }));
+    hydrateAgentSession(ledger());
 
-    expect(getAgentSession().proposals).toHaveLength(0);
+    const ids = getAgentSession().proposals.map((item) => item.id);
+    expect(ids).toContain("prop_pending1");
+    expect(ids).toContain(local.id);
+  });
+
+  it("drops a local proposal once the server knows about it", () => {
+    const local = queueProposal({
+      mutation: { kind: "relabel", entityKind: "room", entityId: "quiet", label: "x", reason: "y" },
+      description: "now declined on the server",
+      reason: "y",
+      impact,
+      scene: structuredClone(sampleScene)
+    });
+    const served = ledger();
+    served.proposals.push({ ...served.proposals[1], id: local.id, status: "declined" });
+
+    hydrateAgentSession(served);
+
+    expect(getAgentSession().proposals.map((item) => item.id)).not.toContain(local.id);
+    expect(getAgentSession().disputes.some((item) => item.id === `dispute_${local.id}`)).toBe(true);
   });
 });
 

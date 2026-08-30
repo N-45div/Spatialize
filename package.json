@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "evals": "vitest run tests/evals --reporter=verbose",
+    "host-check": "node scripts/host-journey.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

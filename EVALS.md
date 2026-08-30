@@ -111,6 +111,41 @@ client code the page uses. It asserts, in order:
 It is skipped when the backend virtualenv is absent, and takes about five
 seconds when it is not.
 
+## 4. Through a real WebMCP host
+
+`npm run host-check` (`scripts/host-journey.mjs`) launches headless Chrome
+with the machine's own `chrome://flags` choices, opens the **production
+bundle** served cross-origin from the API, and drives the golden journey
+through Chrome's own testing surface — `navigator.modelContextTesting.listTools()`
+and `executeTool()`. That is the browser calling the tools, not our code.
+A Reject is a real click on the dock's button; the reload is a real
+`Page.reload`.
+
+Run on 30 August 2026, Chrome 151.0.0.0, flag `#enable-webmcp-testing`:
+
+```
+PASS  host sees a venue record; write tools published  14 tools live
+PASS  host lists 14 tools
+PASS  route computed via host
+PASS  clearance verdict via host                       Verdict: UNKNOWN …
+PASS  report queued and saved to the venue record
+PASS  proposal card visible in the dock
+PASS  impossible doorway refused by the gate
+PASS  declined report shown as a dispute
+PASS  dispute survives a page reload
+PASS  a later agent hears both sides
+PASS  route through the disputed door answers unknown
+PASS  what-if changes nothing
+PASS  every host call audited on the server
+13/13 passed
+```
+
+The first run of this script was 8/13. It found that the store was hydrated
+from the server by *replacing* local state, roughly a second after the tools
+went live — so an agent that acted in that second had its proposal wiped
+mid-flight. Hydration now merges. The fix is pinned by two unit tests and this
+run.
+
 ## What is not measured
 
 - Latency. The tools are pure functions over an in-memory scene; a route is
@@ -120,6 +155,5 @@ seconds when it is not.
   run against the page many times, and the page does not expose most of these
   answers in its DOM at all, so the comparison would be "possible vs not"
   rather than a number. The "via UI alone" column above is that comparison.
-- Anything in a real WebMCP host. These evals exercise the tool surface
-  directly. Whether the ChatGPT browser or Chrome registers and calls it the
-  same way is a separate, manual check.
+- The ChatGPT app browser specifically. Chrome is covered by section 4; the
+  ChatGPT browser is a manual check on a machine that has it.

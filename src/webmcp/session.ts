@@ -190,8 +190,16 @@ export function configureAgentSync(target: SyncTarget | null) {
   sync = target;
 }
 
-/** Replace local state with what the server holds for this run. */
+/**
+ * Bring in what the server holds for this run, keeping anything this tab has
+ * done that the server has not caught up with yet.
+ *
+ * The ledger fetch is a network round trip, and the tools are live before it
+ * returns. An agent that acts in that window has proposals in flight and
+ * calls in the log; replacing the store wholesale would drop them, and did.
+ */
 export function hydrateAgentSession(ledger: ReviewLedger) {
+  const known = new Set(ledger.proposals.map((item) => item.id));
   const proposals: Proposal[] = ledger.proposals
     .filter((item) => item.status === "pending")
     .map((item) => ({
@@ -224,12 +232,31 @@ export function hydrateAgentSession(ledger: ReviewLedger) {
       at: Date.parse(item.decidedAt ?? item.proposedAt)
     }))
     .sort((a, b) => b.at - a.at);
-  // The server keeps calls oldest-first; the page shows newest-first.
-  const calls: ToolCall[] = ledger.calls
+  // The server keeps calls oldest-first; the page shows newest-first. Local
+  // calls the server has not recorded yet stay, deduplicated by id.
+  const serverCalls: ToolCall[] = ledger.calls
     .map((item) => ({ ...item, at: Date.parse(item.at) }))
-    .reverse()
+    .reverse();
+  const serverCallIds = new Set(serverCalls.map((item) => item.id));
+  const calls = [...state.calls.filter((item) => !serverCallIds.has(item.id)), ...serverCalls]
+    .sort((a, b) => b.at - a.at)
     .slice(0, MAX_CALLS);
-  publish({ calls, proposals, refusals: [], disputes, confirmations });
+
+  const localProposals = state.proposals.filter((item) => !known.has(item.id));
+  const localDisputes = state.disputes.filter(
+    (item) => !known.has(item.id.replace(/^dispute_/, ""))
+  );
+  const localConfirmations = state.confirmations.filter(
+    (item) => !known.has(item.id.replace(/^confirmed_/, ""))
+  );
+
+  publish({
+    calls,
+    proposals: [...proposals, ...localProposals],
+    refusals: state.refusals,
+    disputes: [...localDisputes, ...disputes],
+    confirmations: [...localConfirmations, ...confirmations]
+  });
 }
 
 /** A report was accepted in this tab; remember it as the freshest word on its doorways. */
@@ -356,4 +383,10 @@ export function dismissRefusal(id: string) {
 export function clearAgentSession() {
   settlements.clear();
   publish(EMPTY);
+}
+
+// In development, let a host-side check read the store without going
+// through the DOM. Never present in a production build.
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as { __spatialize?: unknown }).__spatialize = { getAgentSession };
 }
