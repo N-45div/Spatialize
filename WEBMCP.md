@@ -164,10 +164,28 @@ numbers are in [EVALS.md](EVALS.md).
 
 ---
 
+## Why WebMCP, and not an API or an MCP server
+
+The fair question is what this does that a backend MCP server could not. An
+MCP server acts *for* the agent, somewhere else. WebMCP acts *on the page the
+person is looking at*. When the agent proposes that a doorway has a step, the
+person watches the card land in the review queue on screen. When it names a
+door, the 3D view moves to it. When the venue declines, the dispute is visible
+to the visitor and to the next agent in the same place. The venue's session,
+the venue's validator and the person's own eyes are in one window, and the
+tools are registered and torn down as that window changes. That shared
+visibility is the whole point here, and it is the thing an API cannot give.
+
 ## The tool surface
 
-Ten read tools (annotated `readOnlyHint` and `untrustedContentHint`) and four write tools. Every write is
-named `propose_*`, because nothing an agent does goes live by itself.
+Fourteen tools, in four groups. Every read carries `readOnlyHint` and
+`untrustedContentHint`; every write is named `propose_*`, because nothing an
+agent does goes live by itself.
+
+- **Ask** — `get_venue_overview`, `list_destinations`, `describe_room`, `list_data_issues`, `list_disputed_claims`
+- **Check** — `find_step_free_route`, `check_route_clearance`, `check_accessibility`
+- **Propose** — `propose_access_change`, `propose_doorway`, `propose_landmark`, `propose_label_correction`
+- **What-if and page** — `simulate_closure`, `focus_view`
 
 | Tool | Kind | What it does |
 |---|---|---|
@@ -390,6 +408,36 @@ For context on how unusual that is: Mappedin's live venue format expresses
 accessibility as a single bit in a 94-byte file, derived from the connection
 type rather than measured. IMDF cannot express clear width, gradient or
 turning circle at all.
+
+## How to test it
+
+Open the live app in the ChatGPT app browser, or in Chrome 149+ with
+`chrome://flags/#enable-webmcp-testing` on. Google's *WebMCP Inspector*
+extension lists the tools a page registers and lets you call them by hand; the
+dock in the bottom-right of the studio shows the same list and reads
+**"14 tools live"** when registration worked.
+
+Say these to your agent, in this order. Each one shows a different thing.
+
+1. *"Is the quiet room step-free from the main entrance?"* — a route computed
+   from geometry, with door widths. The 3D view moves.
+2. *"My chair is 760 mm wide. Can I get to the quiet room?"* — a clearance
+   verdict. It answers **unknown**, not clear, because that doorway was
+   extracted at 78% confidence, and says how old the data is.
+3. *"The quiet-room doorway has a step now, report it."* — the server applies
+   the change to its own copy, computes what it costs (*"removes step-free
+   access to Quiet room"*), and a card appears in the dock. Nothing is live.
+4. *"Add a doorway between the main lobby and the quiet room."* — the gate
+   refuses it with the exact rule and field path. The agent can correct itself.
+5. In the dock, click **Reject** on the report. Then **refresh the page.** The
+   dispute is still there: a venue can decline a report, not delete it.
+6. *"Has anyone disagreed with the venue about access here?"* — the next agent
+   hears both sides.
+7. *"If the lift were out of service, what would I lose?"* — a what-if that
+   changes nothing.
+
+Without a WebMCP browser the page still works as a normal app, and the dock
+explains how to enable the tools.
 
 ## Honesty box
 

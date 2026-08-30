@@ -6,7 +6,7 @@ import {
   subscribeToAgentSession,
   type Proposal
 } from "../webmcp/session";
-import { describeToolSurface } from "../webmcp/tools";
+import { describeToolSurface, type ToolSummary } from "../webmcp/tools";
 import type { WebMCPStatus } from "../webmcp/useWebMCP";
 
 const PERSIST_LABEL = {
@@ -26,6 +26,32 @@ const TRY_THESE = [
   { arc: "report", text: "The quiet-room doorway has a step now — report it." },
   { arc: "refuse", text: "Add a doorway between the main lobby and the quiet room." }
 ] as const;
+
+const ASK = new Set([
+  "get_venue_overview",
+  "list_destinations",
+  "describe_room",
+  "list_data_issues",
+  "list_disputed_claims"
+]);
+
+/** The same four groups the docs use, so the page and the write-up agree. */
+function groupedCatalog(catalog: ToolSummary[]): [string, ToolSummary[]][] {
+  const groups: [string, (name: string) => boolean][] = [
+    ["Ask", (name) => ASK.has(name)],
+    ["Check", (name) => name.startsWith("check_") || name === "find_step_free_route"],
+    ["Propose", (name) => name.startsWith("propose_")],
+    ["What-if and page", () => true]
+  ];
+  const remaining = new Set(catalog);
+  return groups
+    .map(([label, match]): [string, ToolSummary[]] => {
+      const picked = [...remaining].filter((tool) => match(tool.name));
+      picked.forEach((tool) => remaining.delete(tool));
+      return [label, picked];
+    })
+    .filter(([, tools]) => tools.length > 0);
+}
 
 function kindLabel(readOnly: boolean, canPropose: boolean) {
   if (readOnly) return "reads";
@@ -230,7 +256,11 @@ export function AgentPanel({
 
           {showCatalog && (
             <ul className="tool-catalog">
-              {catalog.map((tool) => (
+              {groupedCatalog(catalog).map(([group, tools]) => [
+                <li key={`group-${group}`} className="catalog-group">
+                  {group}
+                </li>,
+                ...tools.map((tool) => (
                 <li key={tool.name}>
                   <div>
                     <code>{tool.name}</code>
@@ -250,7 +280,8 @@ export function AgentPanel({
                     </div>
                   )}
                 </li>
-              ))}
+                ))
+              ])}
             </ul>
           )}
         </div>

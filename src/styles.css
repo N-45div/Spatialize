@@ -1202,3 +1202,5 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .route-words li > span { font: 7px "DM Mono"; color: #6e8179; padding-top: 2px; }
 .route-words small { display: block; font: 7px "DM Mono"; color: #52655d; margin-top: 2px; }
 .route-words-note { margin: 8px 0 0; font-size: 9px; color: #e0a79d; }
+
+.catalog-group { padding: 8px 2px 2px !important; border: 0 !important; font: 7px "DM Mono"; text-transform: uppercase; letter-spacing: .12em; color: #6e8179; }
