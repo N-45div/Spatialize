@@ -134,13 +134,17 @@ All of it runs with `npm test`; full tables in [EVALS.md](EVALS.md).
 
 ## Prior work vs. new work
 
-Spatialize existed before this challenge — it was built for the Backblaze
-Generative Media Hackathon (the spatial canvas, plan extraction, voice
-pipeline, and B2 provenance store), and **its last commit before the WebMCP
-Submission Period was `04e9ad8`, 3 August 2026**. Everything after that commit
-is new: the entire WebMCP surface (`src/webmcp/`), the server-side review
-ledger, the OpenAI voice stack, and the 121 tests added with them. The
-commit-by-commit boundary is documented in
+Spatialize existed before this challenge. It was built for the **Backblaze
+Generative Media Hackathon**, where it earned a **special mention** — that
+prior project is the spatial canvas, the plan extraction loop, the voice
+pipeline, and the B2 provenance store, and **its last commit before the WebMCP
+Submission Period was `04e9ad8`, 3 August 2026**.
+
+The challenge rules allow an existing app when significant new WebMCP
+functionality is added during the Submission Period, so this submission is
+everything after that commit: the entire WebMCP surface (`src/webmcp/`), the
+server-side review ledger, the OpenAI voice stack, and the 121 tests added
+with them. The commit-by-commit boundary is documented in
 [WEBMCP.md](WEBMCP.md#prior-work-vs-work-added-during-the-submission-period).
 
 ## Speak instead of type — the same rules apply

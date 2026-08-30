@@ -18,8 +18,13 @@ venue declines it, the report is kept as a disputed claim rather than deleted.
 ## Prior work vs. work added during the Submission Period
 
 Spatialize existed before this challenge. It was built for the Backblaze
-Generative Media Hackathon and **its last commit before the WebMCP Submission
-Period opened was `04e9ad8`, dated 3 August 2026.**
+Generative Media Hackathon, where it earned a **special mention**, and **its
+last commit before the WebMCP Submission Period opened was `04e9ad8`, dated
+3 August 2026.** The challenge rules allow submitting an existing app when
+significant new WebMCP-related functionality is added during the Submission
+Period; the WebMCP surface described in this document is that new
+functionality, and this section marks the boundary so nothing prior is passed
+off as challenge work.
 
 The Submission Period opened 25 August 2026. **Everything after `04e9ad8` is new
 work, and the entire WebMCP surface lives in files that did not exist before
