@@ -79,6 +79,8 @@ def test_agent_runs_tools_then_answers() -> None:
     roles = [message["role"] for message in chat.requests[-1]["messages"]]
     assert roles[-4:] == ["assistant", "tool", "assistant", "tool"]
     assert chat.requests[-1]["model"] == "gpt-5.6-luna"
+    # gpt-5.6 refuses function tools here unless reasoning is off.
+    assert chat.requests[-1]["reasoning_effort"] == "none"
 
 
 def test_agent_edit_becomes_a_proposal_not_a_direct_write() -> None:
@@ -199,7 +201,10 @@ def test_openai_takes_the_whole_voice_path_when_its_key_is_set() -> None:
 
 
 def test_fallback_providers_remain_when_openai_is_absent() -> None:
-    without = Settings(storage_backend="local", assemblyai_api_key="a", gemini_api_key="g")
+    # Explicit None: a developer's .env may carry a real key, and Settings reads it.
+    without = Settings(
+        storage_backend="local", openai_api_key=None, assemblyai_api_key="a", gemini_api_key="g"
+    )
 
     assert not isinstance(build_transcriber(without, None), OpenAITranscriber)
     assert not isinstance(build_narrator(without, None)._narrators[0], OpenAINarrator)

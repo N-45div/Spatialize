@@ -55,6 +55,12 @@ class Settings(BaseSettings):
         "gpt-5.6-luna",
         validation_alias=AliasChoices("SPATIALIZE_OPENAI_AGENT_MODEL", "openai_agent_model"),
     )
+    # "none" is required for function tools on gpt-5.6 models via chat
+    # completions, and is the right setting for a short tool loop anyway.
+    openai_reasoning_effort: str = Field(
+        "none",
+        validation_alias=AliasChoices("SPATIALIZE_OPENAI_REASONING_EFFORT", "openai_reasoning_effort"),
+    )
     openai_stt_model: str = Field(
         "gpt-4o-mini-transcribe",
         validation_alias=AliasChoices("SPATIALIZE_OPENAI_STT_MODEL", "openai_stt_model"),

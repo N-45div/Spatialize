@@ -8,9 +8,12 @@ tested without a network call.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Callable
 
 from ..config import Settings
+
+logger = logging.getLogger(__name__)
 from .tools import SceneSession, ToolError
 from .voice import SYSTEM_PROMPT, AgentUnavailable, _call
 
@@ -158,13 +161,17 @@ class OpenAIVoiceAgent:
 
         for _ in range(self._settings.agent_max_tool_rounds):
             try:
+                # gpt-5.6 models only accept function tools on this endpoint
+                # with reasoning switched off, which suits a fast tool loop.
                 response = client.chat.completions.create(
                     model=self._settings.openai_agent_model,
                     messages=messages,
                     tools=TOOL_SPECS,
                     tool_choice="auto",
+                    reasoning_effort=self._settings.openai_reasoning_effort,
                 )
-            except Exception as error:  # quota, availability, network
+            except Exception as error:  # quota, availability, network, bad request
+                logger.warning("OpenAI voice agent request failed: %s", error)
                 if session.mutations:
                     return (
                         f"The model provider interrupted me, but these changes were queued for "
