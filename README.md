@@ -69,6 +69,7 @@ computes, and no scene ships without passing the same gate plus human review.
 
 | Capability | Provider / model | How it is used |
 |---|---|---|
+| **Voice path, when `OPENAI_API_KEY` is set** | OpenAI SDK — `gpt-5.6-luna` agent, `gpt-4o-mini-transcribe`, `gpt-4o-mini-tts` | One function-calling loop over the same scene tools; transcription from the clip's bytes, so voice works without B2. About 0.6¢ per spoken question. The rows below are the fallback when the key is absent. |
 | Floor-plan extraction | OpenRouter `google/gemini-3.6-flash` (or Gemini API) | genblaze **`AgentLoop`**: a vision step proposes `scene.json`; the Pydantic topology gate is the loop's **Evaluator**; validation errors feed the next iteration; every attempt is `parent_run_id`-linked |
 | Voice questions (STT) | AssemblyAI `universal-3-5-pro` | `genblaze-assemblyai` pipeline step — hash-verified transcript with word-level timings |
 | Agent reasoning | OpenRouter `google/gemini-3.6-flash` (or Gemini API) | LangGraph ReAct agent over scene-grounded tools; reads answer from validated geometry; writes pass the same topology gate |

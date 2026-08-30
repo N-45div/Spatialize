@@ -57,6 +57,10 @@ def _default_extractor(settings: Settings) -> VisionExtractor:
 
 
 def _default_agent(settings: Settings) -> VoiceAgent:
+    if settings.openai_api_key:
+        from .agents.openai_agent import OpenAIVoiceAgent
+
+        return OpenAIVoiceAgent(settings)
     if settings.gemini_api_key or settings.openrouter_api_key:
         return GeminiVoiceAgent(settings)
     return DisabledVoiceAgent()
@@ -99,8 +103,13 @@ def create_app(
         return {
             "status": "ok",
             "storage": active_settings.storage_backend,
-            "stt": bool(active_settings.assemblyai_api_key),
-            "agent": bool(active_settings.gemini_api_key or active_settings.openrouter_api_key),
+            "stt": bool(active_settings.openai_api_key or active_settings.assemblyai_api_key),
+            "agent": bool(
+                active_settings.openai_api_key
+                or active_settings.gemini_api_key
+                or active_settings.openrouter_api_key
+            ),
+            "voice": "openai" if active_settings.openai_api_key else "fallback",
         }
 
     @app.post("/api/runs", response_model=RunRecord, status_code=status.HTTP_201_CREATED)
@@ -263,9 +272,10 @@ def create_app(
             key = url.split(f"/{bucket}/", 1)[1]
             url = active_store.public_url(key) or url
         if narration.audio_bytes is not None:
+            extension = ".mp3" if narration.media_type == "audio/mpeg" else ".wav"
             answer_key = (
                 f"runs/public/{record.created_at.date().isoformat()}/{record.run_id}"
-                f"/voice/answers/{uuid4().hex[:10]}.wav"
+                f"/voice/answers/{uuid4().hex[:10]}{extension}"
             )
             active_store.put(
                 answer_key,
@@ -340,7 +350,10 @@ def create_app(
                 {"run-id": record.run_id, "artifact": "voice-question"},
             )
             audio_url = active_store.public_url(stored.key)
-            if audio_url is None:
+            # A transcriber that takes bytes needs no public URL for the clip,
+            # so voice works in local storage mode too.
+            takes_bytes = hasattr(active_transcriber, "transcribe_bytes")
+            if audio_url is None and not takes_bytes:
                 if not question:
                     raise HTTPException(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -352,7 +365,12 @@ def create_app(
                 warnings.append("stt-skipped-local-storage")
             else:
                 try:
-                    transcript = active_transcriber.transcribe(audio_url, record.run_id)
+                    if takes_bytes:
+                        transcript = active_transcriber.transcribe_bytes(  # type: ignore[attr-defined]
+                            audio_bytes, audio.content_type or "audio/webm", record.run_id
+                        )
+                    else:
+                        transcript = active_transcriber.transcribe(audio_url or "", record.run_id)
                 except Exception as error:  # includes TranscriptUnavailable
                     if not question:
                         raise HTTPException(

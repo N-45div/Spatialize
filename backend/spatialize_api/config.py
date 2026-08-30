@@ -48,6 +48,25 @@ class Settings(BaseSettings):
         None, validation_alias=AliasChoices("SPATIALIZE_VENUE_TOKEN", "venue_token")
     )
 
+    # OpenAI, when present, takes the whole voice path: agent, speech-to-text
+    # and narration. The other providers stay as fallbacks when it is absent.
+    openai_api_key: str | None = Field(None, validation_alias="OPENAI_API_KEY")
+    openai_agent_model: str = Field(
+        "gpt-5.6-luna",
+        validation_alias=AliasChoices("SPATIALIZE_OPENAI_AGENT_MODEL", "openai_agent_model"),
+    )
+    openai_stt_model: str = Field(
+        "gpt-4o-mini-transcribe",
+        validation_alias=AliasChoices("SPATIALIZE_OPENAI_STT_MODEL", "openai_stt_model"),
+    )
+    openai_tts_model: str = Field(
+        "gpt-4o-mini-tts",
+        validation_alias=AliasChoices("SPATIALIZE_OPENAI_TTS_MODEL", "openai_tts_model"),
+    )
+    openai_tts_voice: str = Field(
+        "coral", validation_alias=AliasChoices("SPATIALIZE_OPENAI_TTS_VOICE", "openai_tts_voice")
+    )
+
     gemini_api_key: str | None = Field(None, validation_alias="GEMINI_API_KEY")
     assemblyai_api_key: str | None = Field(None, validation_alias="ASSEMBLYAI_API_KEY")
     openrouter_api_key: str | None = Field(None, validation_alias="OPENROUTER_API_KEY")

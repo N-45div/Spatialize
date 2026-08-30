@@ -44,7 +44,7 @@ class DisabledVoiceAgent:
         self, session: SceneSession, question: str, history: list[dict] | None = None
     ) -> str:
         raise AgentUnavailable(
-            "The voice agent is not configured. Set GEMINI_API_KEY to enable it."
+            "The voice agent is not configured. Set OPENAI_API_KEY (or GEMINI_API_KEY) to enable it."
         )
 
 

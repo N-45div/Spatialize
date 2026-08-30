@@ -69,7 +69,7 @@ class Narrator(Protocol):
 class DisabledTranscriber:
     def transcribe(self, audio_url: str, run_id: str) -> Transcript:
         raise TranscriptUnavailable(
-            "Speech-to-text is not configured. Set ASSEMBLYAI_API_KEY, or send the question as text."
+            "Speech-to-text is not configured. Set OPENAI_API_KEY or ASSEMBLYAI_API_KEY, or send the question as text."
         )
 
 
@@ -272,6 +272,10 @@ def _kokoro_available(settings: Settings) -> bool:
 
 
 def build_transcriber(settings: Settings, sink: ObjectStorageSink | None) -> Transcriber:
+    if settings.openai_api_key:
+        from .openai_media import OpenAITranscriber
+
+        return OpenAITranscriber(settings)
     if settings.assemblyai_api_key:
         return AssemblyAITranscriber(settings.assemblyai_api_key, settings.stt_model, sink)
     return DisabledTranscriber()
@@ -279,6 +283,10 @@ def build_transcriber(settings: Settings, sink: ObjectStorageSink | None) -> Tra
 
 def build_narrator(settings: Settings, sink: ObjectStorageSink | None) -> Narrator:
     tiers: list[Narrator] = []
+    if settings.openai_api_key:
+        from .openai_media import OpenAINarrator
+
+        tiers.append(OpenAINarrator(settings))
     if settings.gemini_api_key:
         tiers.append(GenblazeNarrator(settings, sink))
     if settings.sarvam_api_key:
