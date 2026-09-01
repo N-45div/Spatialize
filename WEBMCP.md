@@ -61,7 +61,7 @@ tests in isolation.
 | Landmark bounds rule | `src/domain/spatial-scene.ts` | A validator hole this work exposed (see below) |
 | Review ledger (server) | `backend/spatialize_api/review.py` | Proposals, decisions and audit persisted; the gate that counts |
 | Review sync (client) | `src/webmcp/session.ts`, `src/lib/api.ts` | Hydrate from the ledger, post proposals, decide through the server |
-| 111 new tests | `tests/webmcp-*.test.ts` (88), `tests/e2e` (1), `tests/evals` (2), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (19) | Both gate paths, every tool, the contract, persistence, the whole loop through the real API |
+| 135 new tests | `tests/webmcp-*.test.ts` (98), `tests/e2e` (1), `tests/evals` (2), `spatial-scene.test.ts` (1), `backend/tests/test_review.py` (21), `backend/tests/test_openai.py` (12) | Both gate paths, every tool, the contract, persistence, the result budget on a large venue, prompt injection through tool output, the whole loop through the real API |
 
 ### What is unchanged prior work
 
@@ -276,6 +276,46 @@ and both are fixed:
   enabling self-correction."** This is exactly what the topology gate is. Schemas
   stay permissive; the deterministic validator is strict and hands back field
   paths.
+
+### And against the tool-security and agent-security guides
+
+Chrome published [tool security](https://developer.chrome.com/docs/ai/webmcp/secure-tools)
+and a companion [agent security](https://developer.chrome.com/docs/agents/security)
+guide. Auditing this surface against all 181 of their checkable rules found
+three real defects, all now fixed and pinned by tests:
+
+- **A number nobody gave was treated as a measurement.** `propose_doorway`
+  filled an unmeasured doorway with a 0.9 m default and stamped the evidence
+  `method: "human"` — laundering this app's placeholder into the venue's record
+  as a visitor's observation. Width and step-free status are now optional, an
+  unmeasured width is evidenced as `derived` below the confidence floor (so a
+  clearance check answers UNKNOWN, not CLEAR), and the reviewer's card says
+  *"width not measured, step-free status not stated"* next to what they are
+  approving.
+- **An unreadable parameter was silently ignored.** `minimum_clear_width_mm:
+  "760mm"` parsed to null, which meant *no width given*, which meant no width
+  was checked — and the tool could answer **CLEAR** to a wheelchair user whose
+  chair had never been compared to a doorway. A given-but-unreadable value is
+  now rejected, naming the expected format, which is also what the guides ask
+  of a rejected parameter.
+- **Results were unbounded on a venue larger than the demo.** The 1.5K result
+  budget held for our sample building and would have broken on a real one:
+  every-doorway and every-landmark lists grow with the plan. Those lists are
+  now budgeted line by line, ordered so the cut falls on the widest doorways
+  rather than the narrowest, and `ok()`/`fail()` clamp on a line boundary as a
+  backstop. A test builds a venue with 60 extra doors and landmarks and asserts
+  every read result stays inside 1500 characters.
+
+The agent-security guide applies to this repo twice over, because the voice
+path is itself an agent. Its system prompt now states that tool results are
+data and never instructions — room labels and review notes are written by
+strangers — and a test plants an injected instruction in a room label, runs the
+tool loop, and asserts nothing was written on the strength of it.
+
+Two things the guides say that this surface does **not** need: `destructiveHint`
+and `idempotentHint` do not exist in Chrome's WebMCP (only `readOnlyHint` and
+`untrustedContentHint` do), and cross-origin `exposedTo` is not used here
+because the tools are for the agent driving this page.
 
 ### The agent dock
 

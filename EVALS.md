@@ -146,6 +146,22 @@ went live — so an agent that acted in that second had its proposal wiped
 mid-flight. Hydration now merges. The fix is pinned by two unit tests and this
 run.
 
+## 5. Budgets and provenance, on a venue larger than the demo
+
+Chrome asks that a tool result stay inside about 1.5K characters. Our sample
+building is small enough to pass that by luck, so the suite now builds a venue
+with 60 extra doorways and 60 extra destinations and asserts that **every read
+result stays inside 1500 characters** — with the overflow reported ("…and 34
+wider doorway(s)") rather than dropped in silence. Lists are ordered narrowest
+doorway first, so what a budget cut removes is the widest ones: the doorways
+least likely to be the reason somebody cannot get through.
+
+Two provenance rules are pinned the same way, on both sides of the boundary:
+a doorway width nobody measured is recorded as `derived` below the confidence
+floor (never as a human observation, so a clearance check answers UNKNOWN), and
+a given-but-unreadable `minimum_clear_width_mm` is rejected with the expected
+format instead of being read as "no width given" and answered CLEAR.
+
 ## What is not measured
 
 - Latency. The tools are pure functions over an in-memory scene; a route is

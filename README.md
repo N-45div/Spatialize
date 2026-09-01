@@ -91,9 +91,13 @@ venue on `document.modelContext` tied to an `AbortController`, and the four
 `propose_*` tools are only offered when there is a venue record to propose
 against. Every read carries `readOnlyHint`; results use canonical MCP content
 form; the dock publishes the full typed contract on screen, so the surface can
-be read without opening the source. Full design notes — including how Chrome's
-published best practices reshaped the tool names and parameters — in
-[WEBMCP.md](WEBMCP.md).
+be read without opening the source. The surface is built against Chrome's
+published guidance — [best practices](https://developer.chrome.com/docs/ai/webmcp/best-practices),
+[tool security](https://developer.chrome.com/docs/ai/webmcp/secure-tools) and
+[agent security](https://developer.chrome.com/docs/agents/security) — and a
+test suite holds it there: every result inside the 1.5K budget on a venue far
+larger than the demo, every parameter description inside 150 characters, and no
+tool that accepts raw coordinates. Full design notes in [WEBMCP.md](WEBMCP.md).
 
 ## Nothing an agent says goes live
 
@@ -201,8 +205,8 @@ SPATIALIZE_ALLOWED_ORIGINS                       # CORS ("*" for development)
 ### Tests
 
 ```bash
-npm test                # 100 frontend tests, including the e2e and eval suites
-cd backend && .venv/Scripts/python -m pytest    # 48 API / gate / review / voice tests
+npm test                # 110 frontend tests, including the e2e and eval suites
+cd backend && .venv/Scripts/python -m pytest    # 52 API / gate / review / voice tests
 npm run evals           # journey + model tool-selection evals — EVALS.md
 npm run host-check      # the journey driven by Chrome's own WebMCP host
 ```
