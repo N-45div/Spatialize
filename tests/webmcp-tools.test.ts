@@ -701,3 +701,120 @@ describe("agent activity log", () => {
     expect(outcomes).toContain("error");
   });
 });
+
+describe("a number nobody gave is never treated as a measurement", () => {
+  it("refuses an unreadable clearance width instead of answering CLEAR", async () => {
+    const { tools } = harness(copyScene());
+
+    const result = await call(tools, "check_route_clearance", {
+      to: "gallery-mark",
+      minimum_clear_width_mm: "760mm"
+    });
+
+    // Silently ignoring it would tell a wheelchair user the route is clear
+    // when no width was ever checked against their chair.
+    expect(result.isError).toBe(true);
+    const text = textOf(result);
+    expect(text).not.toContain("CLEAR");
+    expect(text).toContain("plain number of millimetres");
+    expect(text).toContain("760");
+  });
+
+  it("still checks the route when no width is given at all", async () => {
+    const { tools } = harness(copyScene());
+
+    const result = await call(tools, "check_route_clearance", { to: "gallery-mark" });
+
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toContain("Verdict:");
+  });
+
+  it("records a proposed doorway nobody measured as unmeasured, not as an observation", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "propose_doorway", {
+        room_a: "Main lobby",
+        room_b: "Learning studio",
+        reason: "there is a door here the plan missed"
+      })
+    );
+
+    // The venue reviewer has to see which numbers came from a person.
+    expect(text).toContain("width not measured");
+    const [proposal] = getAgentSession().proposals;
+    expect(proposal.mutation).toMatchObject({ kind: "add-door" });
+    expect(proposal.mutation && "width" in proposal.mutation).toBe(false);
+  });
+
+  it("keeps a width the person did measure", async () => {
+    const { tools } = harness(copyScene());
+
+    const text = textOf(
+      await call(tools, "propose_doorway", {
+        room_a: "Main lobby",
+        room_b: "Learning studio",
+        width: 0.82,
+        step_free: true,
+        reason: "measured it at 820 mm"
+      })
+    );
+
+    expect(text).not.toContain("width not measured");
+    const [proposal] = getAgentSession().proposals;
+    expect(proposal.mutation).toMatchObject({ kind: "add-door", width: 0.82 });
+  });
+});
+
+describe("result budget holds on a venue larger than the demo", () => {
+  /** The sample venue with many more doors and landmarks, as a real building has. */
+  function bigScene(): SpatialScene {
+    const scene = copyScene();
+    const [door] = scene.doors;
+    const [landmark] = scene.landmarks;
+    for (let index = 0; index < 60; index += 1) {
+      scene.doors.push({
+        ...structuredClone(door),
+        id: `extra-door-${index}`,
+        label: `Extra doorway number ${index} on the east side`,
+        width: 0.8 + index / 100
+      });
+      scene.landmarks.push({
+        ...structuredClone(landmark),
+        id: `extra-landmark-${index}`,
+        label: `Extra destination number ${index}`
+      });
+    }
+    return scene;
+  }
+
+  it("keeps every read result inside 1500 characters", async () => {
+    const scene = bigScene();
+    const { tools } = harness(scene);
+    const calls: [string, Record<string, unknown>][] = [
+      ["get_venue_overview", {}],
+      ["list_destinations", {}],
+      ["check_accessibility", {}],
+      ["list_data_issues", {}],
+      ["find_step_free_route", { to: "gallery-mark" }],
+      ["check_route_clearance", { to: "gallery-mark", minimum_clear_width_mm: 760 }],
+      ["describe_room", { room: "lobby" }],
+      ["simulate_closure", { door: "door-lobby-gallery" }]
+    ];
+
+    for (const [name, args] of calls) {
+      const text = textOf(await call(tools, name, args));
+      expect(text.length, `${name} result`).toBeLessThanOrEqual(1500);
+    }
+  });
+
+  it("says how many entries it left out rather than dropping them silently", async () => {
+    const { tools } = harness(bigScene());
+
+    const destinations = textOf(await call(tools, "list_destinations"));
+    const audit = textOf(await call(tools, "check_accessibility"));
+
+    expect(destinations).toContain("more");
+    expect(audit).toContain("doorway(s)");
+  });
+});
