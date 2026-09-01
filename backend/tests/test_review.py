@@ -330,3 +330,60 @@ def test_venue_token_gates_decisions_when_set(tmp_path: Path) -> None:
 
         assert anonymous.status_code == 403
         assert venue.status_code == 200
+
+
+def add_doorway(run: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    """A visitor reports a doorway the plan missed, on the lobby/gallery wall."""
+    return {
+        "id": "prop_door",
+        "mutation": {
+            "kind": "add-door",
+            "label": "Second lobby door",
+            "connects": ["lobby", "gallery"],
+            "position": [5, 3.5],
+            "reason": "there is another door here",
+            **extra,
+        },
+        "baseSceneVersion": run["sceneVersion"],
+    }
+
+
+def approved_door(test_client: TestClient, run: dict[str, Any], label: str) -> dict[str, Any]:
+    """Approve the proposal and read the door out of the scene the server installed."""
+    response = test_client.post(f"/api/runs/{run['runId']}/proposals/prop_door/approve")
+    assert response.status_code == 200, response.text
+    scene = response.json()["scene"]
+    return next(door for door in scene["doors"] if door["label"] == label)
+
+
+def test_a_width_nobody_measured_is_not_recorded_as_a_human_observation(tmp_path: Path) -> None:
+    with client(tmp_path) as test_client:
+        run = extracted_run(test_client)
+
+        response = propose(test_client, run, add_doorway(run))
+
+        assert response.status_code == 201
+        # The reviewer is told, in the description they approve, that two of
+        # these numbers came from nobody.
+        assert "width not measured" in response.json()["description"]
+        assert "step-free status not stated" in response.json()["description"]
+
+        door = approved_door(test_client, run, "Second lobby door")
+        assert door["evidence"]["width"]["method"] == "derived"
+        assert "not measured" in door["evidence"]["width"]["note"]
+        # Under the confidence floor, so a clearance check answers UNKNOWN.
+        assert door["evidence"]["width"]["confidence"] < 0.85
+
+
+def test_a_measured_width_keeps_its_human_provenance(tmp_path: Path) -> None:
+    with client(tmp_path) as test_client:
+        run = extracted_run(test_client)
+
+        response = propose(test_client, run, add_doorway(run, width=0.82, accessible=True))
+
+        assert response.status_code == 201
+        assert "not measured" not in response.json()["description"]
+
+        door = approved_door(test_client, run, "Second lobby door")
+        assert door["width"] == 0.82
+        assert door["evidence"]["width"]["method"] == "human"
