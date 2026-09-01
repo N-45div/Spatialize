@@ -67,11 +67,26 @@ function named(items: { id: string; label: string }[]): string {
 }
 
 function ok(text: string): ToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: "text", text: clampResult(text) }] };
 }
 
 function fail(text: string): ToolResult {
-  return { content: [{ type: "text", text }], isError: true };
+  return { content: [{ type: "text", text: clampResult(text) }], isError: true };
+}
+
+/**
+ * Last line of defence on Chrome's ~1.5K result budget. The tools that build
+ * venue-sized lists budget them line by line; this catches anything a venue
+ * shape we have not seen would still push over, cutting on a line boundary
+ * and saying so rather than truncating mid-sentence.
+ */
+function clampResult(text: string): string {
+  if (text.length <= RESULT_BUDGET) return text;
+  const marker = "\n… trimmed to fit the agent result budget; ask for one part at a time.";
+  const room = RESULT_BUDGET - marker.length;
+  const cut = text.slice(0, room);
+  const boundary = cut.lastIndexOf("\n");
+  return (boundary > room / 2 ? cut.slice(0, boundary) : cut.trimEnd()) + marker;
 }
 
 function str(args: Record<string, unknown>, key: string): string {
@@ -86,6 +101,46 @@ function num(args: Record<string, unknown>, key: string): number | null {
     return Number(value);
   }
   return null;
+}
+
+/**
+ * Chrome asks that one tool result stay inside about 1.5K characters. Lists
+ * that grow with the venue — every doorway, every landmark — have to be
+ * budgeted, or a large building silently blows an agent's context.
+ */
+export const RESULT_BUDGET = 1500;
+
+/**
+ * Emit list lines until the character budget is spent, then say how many were
+ * left out. Lines are cut from the tail, never from within a line: these lists
+ * are ordered so the part a person needs first (narrowest doorway, nearest
+ * destination) survives the cut.
+ */
+function budgeted(lines: string[], budget: number, more: (left: number) => string): string {
+  if (!lines.length) return "";
+  const kept: string[] = [];
+  let spent = 0;
+  for (const line of lines) {
+    if (kept.length > 0 && spent + line.length + 1 > budget) break;
+    kept.push(line);
+    spent += line.length + 1;
+  }
+  const left = lines.length - kept.length;
+  if (left > 0) kept.push(more(left));
+  return kept.join("\n");
+}
+
+/**
+ * A number, `null` when the argument is absent, `"unreadable"` when it was
+ * given but is not a number. Silently treating "760mm" as "no width given"
+ * would answer CLEAR to someone who asked whether their chair fits.
+ */
+function numGiven(args: Record<string, unknown>, key: string): number | null | "unreadable" {
+  const value = args[key];
+  const absent =
+    value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+  if (absent) return null;
+  return num(args, key) ?? "unreadable";
 }
 
 function bool(args: Record<string, unknown>, key: string, fallback: boolean): boolean {
@@ -330,7 +385,14 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
             `extraction confidence ${(item.confidence * 100).toFixed(0)}%)`
         );
         recordCall("list_destinations", args, "answered", `${landmarks.length} landmark(s)`);
-        return ok(`${landmarks.length} landmark(s) in ${scene.name}:\n${lines.join("\n")}`);
+        return ok(
+          `${landmarks.length} landmark(s) in ${scene.name}:\n` +
+            budgeted(
+              lines,
+              RESULT_BUDGET - 160,
+              (left) => `- …and ${left} more. Narrow the list with \`type\`.`
+            )
+        );
       }
     },
 
@@ -508,20 +570,27 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         const scene = context.getScene();
         const summary = accessibilitySummary(scene);
         const blocked = summary.blocked.length
-          ? summary.blocked
-              .map(
+          ? budgeted(
+              summary.blocked.map(
                 (item) =>
                   `- ${item.label}${item.blockers.length ? ` — blocked by ${item.blockers.join(", ")}` : " — no route found at all"}`
-              )
-              .join("\n")
+              ),
+              RESULT_BUDGET / 3,
+              (left) => `- …and ${left} more unreachable without steps.`
+            )
           : "- none";
         // Every doorway width, not just the ones under one threshold. A scooter
         // user and a cane user disagree about what counts as passable, so the
         // measurement is reported and the judgement is left to the person.
-        const widths = [...scene.doors]
-          .sort((a, b) => a.width - b.width)
-          .map((door) => `- ${door.label}: ${door.width} m clear`)
-          .join("\n");
+        // Narrowest first, so a budget cut removes the widest — the ones least
+        // likely to be the reason somebody cannot get through.
+        const widths = budgeted(
+          [...scene.doors]
+            .sort((a, b) => a.width - b.width)
+            .map((door) => `- ${door.label}: ${door.width} m clear`),
+          RESULT_BUDGET / 3,
+          (left) => `- …and ${left} wider doorway(s). Ask about a specific room with describe_room.`
+        );
         const disputes = getAgentSession().disputes.length;
 
         recordCall(
@@ -596,10 +665,13 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           recordCall("list_disputed_claims", args, "answered", "no disputes");
           return ok("No declined reports on this venue. Nothing is in dispute.");
         }
-        const lines = disputes
-          .slice(0, 8)
-          .map((item) => `- ${item.description}\n  Visitor said: "${item.reason}" — venue declined this.`)
-          .join("\n");
+        const lines = budgeted(
+          disputes.map(
+            (item) => `- ${item.description}\n  Visitor said: "${item.reason}" — venue declined this.`
+          ),
+          RESULT_BUDGET - 260,
+          (left) => `- …and ${left} more declined report(s) on this venue.`
+        );
         recordCall("list_disputed_claims", args, "answered", `${disputes.length} disputed`);
         return ok(
           `${disputes.length} access report(s) the venue declined but which remain on the ` +
@@ -643,7 +715,17 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         const to = str(args, "to");
         if (!to) return fail("Pass a destination in `to`. Use list_destinations to see the options.");
 
-        const minWidthMm = num(args, "minimum_clear_width_mm");
+        const given = numGiven(args, "minimum_clear_width_mm");
+        if (given === "unreadable") {
+          recordCall("check_route_clearance", args, "error", "unreadable width");
+          return fail(
+            "Could not read `minimum_clear_width_mm`. Give a plain number of millimetres — " +
+              "760 for a 760 mm chair, not \"760mm\" or \"76 cm\". Leave it out to check the " +
+              "route without a width. Answering without checking the width would risk telling " +
+              "someone a route is clear when it was never measured against them."
+          );
+        }
+        const minWidthMm = given;
         const stepFree = bool(args, "require_step_free", true);
         const { plan, from, to: target, fallbackUsed, fromUnresolved } = planRoute(scene, {
           to,
@@ -917,11 +999,15 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
           label: { type: "string", description: "Optional name for the doorway." },
           step_free: {
             type: "boolean",
-            description: "Whether the doorway is step-free. Defaults to true."
+            description:
+              "Whether the doorway is step-free. Leave it out if the person did not say; " +
+              "the proposal is then marked as not observed rather than assumed step-free."
           },
           width: {
             type: "number",
-            description: "Clear width in metres, if the person measured it. Defaults to 0.9."
+            description:
+              "Clear width in metres, only if the person measured it. Leave it out otherwise — " +
+              "the doorway is then recorded as unmeasured, not as a guess."
           },
           reason: { type: "string", description: "What the person observed." }
         },
@@ -953,15 +1039,27 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
         }
 
         const { point } = sharedBoundaryPoint(roomA, roomB);
-        const width = num(args, "width") ?? 0.9;
+        const widthGiven = numGiven(args, "width");
+        if (widthGiven === "unreadable") {
+          recordCall("propose_doorway", args, "error", "unreadable width");
+          return fail(
+            "Could not read `width`. Give a plain number of metres — 0.85 for an 850 mm " +
+              "doorway — or leave it out if nobody measured it. A width nobody measured is " +
+              "not recorded as one."
+          );
+        }
+        const stepFree = boolStrict(args, "step_free");
 
         return submitMutation(context, "propose_doorway", args, {
           kind: "add-door",
           label: str(args, "label") || `${roomA.label} to ${roomB.label}`,
           connects: [roomA.id, roomB.id],
           position: point,
-          width,
-          accessible: bool(args, "step_free", true),
+          // Both are omitted when the visitor did not say. The gate records an
+          // unmeasured doorway as unmeasured instead of inventing an
+          // observation, and the venue reviewer is told which is which.
+          ...(widthGiven === null ? {} : { width: widthGiven }),
+          ...(stepFree === null ? {} : { accessible: stepFree }),
           reason
         });
       }

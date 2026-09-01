@@ -231,3 +231,57 @@ describe("topology gate on agent writes", () => {
     expect(text).toContain("not step-free");
   });
 });
+
+describe("provenance of a proposed doorway", () => {
+  // Lobby and Learning studio share the wall at y = 5, so the gate accepts a
+  // doorway there and we can look at how it was recorded.
+  const onTheSharedWall = {
+    kind: "add-door" as const,
+    label: "Lobby to studio",
+    connects: ["lobby", "studio"] as [string, string],
+    position: [5.5, 5] as [number, number]
+  };
+
+  it("marks an unmeasured width as derived, never as a human observation", () => {
+    const verdict = gateMutation(copyScene(), {
+      ...onTheSharedWall,
+      reason: "there is a door here the plan missed"
+    });
+
+    if (verdict.status !== "accepted") throw new Error(`expected accepted, got ${verdict.status}`);
+    const door = verdict.scene.doors.find((item) => item.label === "Lobby to studio");
+    expect(door?.evidence.width.method).toBe("derived");
+    expect(door?.evidence.width.note).toContain("not measured");
+    // Below the confidence floor, so a clearance check answers UNKNOWN rather
+    // than treating this app's placeholder as a measured doorway.
+    expect(door?.evidence.width.confidence).toBeLessThan(0.85);
+  });
+
+  it("keeps human provenance for a width the person measured", () => {
+    const verdict = gateMutation(copyScene(), {
+      ...onTheSharedWall,
+      width: 0.82,
+      reason: "measured it at 820 mm"
+    });
+
+    if (verdict.status !== "accepted") throw new Error(`expected accepted, got ${verdict.status}`);
+    const door = verdict.scene.doors.find((item) => item.label === "Lobby to studio");
+    expect(door?.evidence.width.method).toBe("human");
+    expect(door?.width).toBe(0.82);
+  });
+
+  it("tells the reviewer which numbers nobody gave", () => {
+    const scene = copyScene();
+    const unmeasured = describeMutation(scene, { ...onTheSharedWall, reason: "a door is here" });
+    const measured = describeMutation(scene, {
+      ...onTheSharedWall,
+      width: 0.82,
+      accessible: true,
+      reason: "measured it"
+    });
+
+    expect(unmeasured).toContain("width not measured");
+    expect(unmeasured).toContain("step-free status not stated");
+    expect(measured).not.toContain("not measured");
+  });
+});

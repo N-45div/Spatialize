@@ -35,6 +35,9 @@ from .workflow import RunService, SceneRejected
 LEDGER_CALL_CAP = 200
 LABEL_LIMIT = 80
 REASON_LIMIT = 240
+# Placeholder width for a proposed doorway nobody measured. The scene schema
+# requires a number; this one is never evidenced as an observation.
+ASSUMED_DOOR_WIDTH = 0.9
 LANDMARK_TYPES = ("entrance", "elevator", "stairs", "restroom", "destination")
 ENTITY_KINDS = ("room", "door", "landmark")
 ROOM_CATEGORIES = ("public", "service", "circulation", "restricted")
@@ -249,9 +252,14 @@ def apply_mutation(scene: dict[str, Any], mutation: dict[str, Any]) -> tuple[dic
             raise MutationRejected("`connects` must name two rooms")
         connects = [str(side) for side in connects]
         position = _require_point(mutation)
-        width = mutation.get("width", 0.9)
-        if not isinstance(width, (int, float)) or not 0 < width <= 8:
+        # An absent width means nobody measured it. It is filled with a
+        # placeholder because the scene schema requires a number, but it is
+        # never evidenced as a human observation.
+        measured = mutation.get("width") is not None
+        width = mutation.get("width", ASSUMED_DOOR_WIDTH)
+        if not isinstance(width, (int, float)) or isinstance(width, bool) or not 0 < width <= 8:
             raise MutationRejected("`width` must be a number of metres between 0 and 8")
+        stated = mutation.get("accessible") is not None
         accessible = mutation.get("accessible", True)
         if not isinstance(accessible, bool):
             raise MutationRejected("`accessible` must be true or false")
@@ -267,14 +275,32 @@ def apply_mutation(scene: dict[str, Any], mutation: dict[str, Any]) -> tuple[dic
                 "confidence": 0.6,
                 "evidence": {
                     "position": _agent_evidence(reason),
-                    "width": _agent_evidence(reason),
+                    "width": _agent_evidence(reason)
+                    if measured
+                    else {
+                        "confidence": 0.3,
+                        "method": "derived",
+                        "note": (
+                            f"Clear width not measured — assumed {ASSUMED_DOOR_WIDTH} m "
+                            "pending measurement."
+                        ),
+                    },
                     "connectivity": _agent_evidence(reason),
                 },
             }
         )
         prefix = "step-free " if accessible else ""
+        unstated = ", ".join(
+            note
+            for note in (
+                None if measured else "width not measured",
+                None if stated else "step-free status not stated",
+            )
+            if note
+        )
         return draft, (
             f'Add {prefix}doorway "{label}" between {room_label(connects[0])} and {room_label(connects[1])}'
+            + (f" ({unstated})" if unstated else "")
         )
 
     if kind == "set-room-category":

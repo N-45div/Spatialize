@@ -20,6 +20,8 @@ export type LandmarkType = (typeof LANDMARK_TYPES)[number];
 
 export const LABEL_LIMIT = 80;
 export const REASON_LIMIT = 240;
+/** Placeholder width for a proposed doorway nobody measured. Never presented as observed. */
+export const ASSUMED_DOOR_WIDTH = 0.9;
 
 export type SceneMutation =
   | {
@@ -50,8 +52,10 @@ export type SceneMutation =
       label: string;
       connects: [string, string];
       position: [number, number];
-      width: number;
-      accessible: boolean;
+      /** Omitted when nobody measured it: assumed, and marked as assumed. */
+      width?: number;
+      /** Omitted when the visitor did not say whether it is step-free. */
+      accessible?: boolean;
       reason: string;
     }
   | {
@@ -221,18 +225,28 @@ function applyAddLandmark(draft: Draft, mutation: Extract<SceneMutation, { kind:
 }
 
 function applyAddDoor(draft: Draft, mutation: Extract<SceneMutation, { kind: "add-door" }>) {
+  const measured = mutation.width !== undefined;
   draft.doors.push({
     id: freeId(mutation.label, new Set(draft.doors.map((item) => item.id))),
     label: sanitiseFreeText(mutation.label, LABEL_LIMIT),
     position: mutation.position,
-    width: mutation.width,
+    width: mutation.width ?? ASSUMED_DOOR_WIDTH,
     rotation: 0,
     connects: mutation.connects,
-    accessible: mutation.accessible,
+    accessible: mutation.accessible ?? true,
     confidence: 0.6,
     evidence: {
       position: agentEvidence(mutation.reason),
-      width: agentEvidence(mutation.reason),
+      // A width nobody measured is derived by this app, not observed by a
+      // person. Calling it "human" would launder our own default into the
+      // venue's record as a visitor's measurement.
+      width: measured
+        ? agentEvidence(mutation.reason)
+        : {
+            confidence: 0.3,
+            method: "derived" as const,
+            note: `Clear width not measured — assumed ${ASSUMED_DOOR_WIDTH} m pending measurement.`
+          },
       connectivity: agentEvidence(mutation.reason)
     }
   });
@@ -367,9 +381,16 @@ export function describeMutation(scene: SpatialScene, mutation: SceneMutation): 
     case "add-door": {
       const roomLabel = (id: string) =>
         id === "outside" ? "outside" : (scene.rooms.find((item) => item.id === id)?.label ?? id);
+      // The reviewer must see which numbers came from a person and which are
+      // this app's placeholders, because they are approving both.
+      const unstated = [
+        mutation.width === undefined ? "width not measured" : null,
+        mutation.accessible === undefined ? "step-free status not stated" : null
+      ].filter((note): note is string => note !== null);
       return (
-        `Add ${mutation.accessible ? "step-free " : ""}doorway "${cleanLabel}" between ` +
-        `${roomLabel(mutation.connects[0])} and ${roomLabel(mutation.connects[1])}`
+        `Add ${(mutation.accessible ?? true) ? "step-free " : ""}doorway "${cleanLabel}" between ` +
+        `${roomLabel(mutation.connects[0])} and ${roomLabel(mutation.connects[1])}` +
+        (unstated.length > 0 ? ` (${unstated.join(", ")})` : "")
       );
     }
     case "set-room-category": {
