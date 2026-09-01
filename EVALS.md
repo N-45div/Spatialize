@@ -121,7 +121,9 @@ and `executeTool()`. That is the browser calling the tools, not our code.
 A Reject is a real click on the dock's button; the reload is a real
 `Page.reload`.
 
-Run on 30 August 2026, Chrome 151.0.0.0, flag `#enable-webmcp-testing`:
+Run on 1 September 2026 against the **deployed** app — the Vercel frontend
+calling the Render API cross-origin — on Chrome 152.0.7977.65 with the flag
+`#enable-webmcp-testing`:
 
 ```
 PASS  host sees a venue record; write tools published  14 tools live
@@ -140,11 +142,23 @@ PASS  every host call audited on the server
 13/13 passed
 ```
 
-The first run of this script was 8/13. It found that the store was hydrated
-from the server by *replacing* local state, roughly a second after the tools
-went live — so an agent that acted in that second had its proposal wiped
-mid-flight. Hydration now merges. The fix is pinned by two unit tests and this
-run.
+This script has now caught two real defects, which is the argument for driving
+a page through a browser rather than a mock.
+
+Its first run was 8/13: the store was hydrated from the server by *replacing*
+local state, roughly a second after the tools went live — so an agent that
+acted in that second had its proposal wiped mid-flight. Hydration now merges,
+pinned by two unit tests.
+
+Its first run against the deployed app was 2/13, and the two passes were the
+tools registering and listing. Chrome had auto-updated 151 → 152, which
+**removed `navigator.modelContextTesting`** and folded the host surface onto
+`document.modelContext`: `getTools()` instead of `listTools()`, and
+`executeTool()` taking the `RegisteredTool` object rather than a tool name
+(arguments stay a JSON string). The page itself needed no change — the tools
+registered and ran correctly the whole time — but the harness did, and it now
+tries the old surface first so it runs on 149-152. Worth knowing if you are
+building against this API during the origin trial.
 
 ## 5. Budgets and provenance, on a venue larger than the demo
 

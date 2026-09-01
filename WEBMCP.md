@@ -9,7 +9,8 @@ threshold rather than ours. Write tools cannot touch the scene: a proposed chang
 checked against the plan's own topology rules and then waits for a person. If the
 venue declines it, the report is kept as a disputed claim rather than deleted.
 
-**Live app:** https://spatialize.onrender.com — open `#studio`
+**Live app:** https://spatialize-pink.vercel.app/#studio
+**API:** https://spatialize.onrender.com
 **Requires:** the ChatGPT app browser, or Chrome 149+ with
 `chrome://flags/#enable-webmcp-testing` enabled.
 
@@ -167,10 +168,11 @@ numbers are in [EVALS.md](EVALS.md).
   the tab is wiped and hydrated, and a later agent hears both sides. About five
   seconds, every run.
 - **Through a real WebMCP host** — `npm run host-check` launches Chrome with
-  the flag on and drives the same journey through the browser's own
-  `navigator.modelContextTesting.executeTool`, against the production bundle,
-  with a real click on Reject and a real page reload. **13 of 13** on Chrome
-  151. The first run was 8 of 13 and found a hydration race; see EVALS.md.
+  the flag on and drives the same journey through the browser's own WebMCP
+  surface, against the deployed app, with a real click on Reject and a real
+  page reload. **13 of 13** on Chrome 152. Two runs of this script each caught
+  a real defect — a hydration race, and Chrome 152's changed host API; see
+  EVALS.md.
 
 ---
 

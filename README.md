@@ -12,7 +12,9 @@ impact, decided by a person, and kept on the record even when the venue says no.
 
 Built for the **OpenAI WebMCP Challenge**.
 
-**Live app:** https://spatialize.onrender.com — open `#studio`
+**Live app:** https://spatialize-pink.vercel.app/#studio
+**API:** https://spatialize.onrender.com (free instance — the first request after
+an idle spell wakes it, which takes a few seconds)
 **The agent surface, in depth:** [WEBMCP.md](WEBMCP.md)
 **Every claim, measured:** [EVALS.md](EVALS.md)
 **System architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -131,10 +133,11 @@ All of it runs with `npm test`; full tables in [EVALS.md](EVALS.md).
 - **End to end through the real backend** — spawned FastAPI, real store: ask,
   report, refuse, decline, wipe the tab, hydrate, and the next agent hears
   both sides. About five seconds per run.
-- **Through a real WebMCP host** — `npm run host-check` drives the same
-  journey through Chrome's own `navigator.modelContextTesting.executeTool`
-  against the production bundle: **13 of 13** on Chrome 151. The first run was
-  8 of 13 and caught a real hydration race, since fixed and pinned by tests.
+- **Through a real WebMCP host, against the deployed app** — `npm run
+  host-check` drives the same journey through Chrome's own WebMCP surface on
+  the live Vercel frontend and Render API: **13 of 13** on Chrome 152. Two
+  earlier runs of this script each found a real defect — a hydration race, and
+  Chrome 152's changed host API — both fixed.
 
 ## Prior work vs. new work
 
