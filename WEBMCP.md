@@ -127,7 +127,7 @@ unresolved visitor dispute:
 ```
 Verdict: UNKNOWN — the main entrance to Quiet room, 24 m.
 Narrowest doorway on the route: Quiet-room doorway at 1100 mm clear.
-Unconfirmed measurements: Quiet-room doorway (extracted at 78% confidence).
+Unconfirmed measurements: Quiet-room doorway (extracted at 75% confidence).
 Widths come from the floor plan, checked for consistency, not measured on site.
 Turning space, thresholds and gradients are not in this venue's data, so this
 is a doorway-width and steps check only.
@@ -475,7 +475,7 @@ Say these to your agent, in this order. Each one shows a different thing.
    from geometry, with door widths. The 3D view moves.
 2. *"My chair is 760 mm wide. Can I get to the quiet room?"* — a clearance
    verdict. It answers **unknown**, not clear, because that doorway was
-   extracted at 78% confidence, and says how old the data is.
+   extracted at 75% confidence, and says how old the data is.
 3. *"The quiet-room doorway has a step now, report it."* — the server applies
    the change to its own copy, computes what it costs (*"removes step-free
    access to Quiet room"*), and a card appears in the dock. Nothing is live.

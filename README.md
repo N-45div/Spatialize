@@ -35,7 +35,7 @@ Then say these to your agent, in order — each shows a different thing:
    The 3D view moves to what the agent found.
 2. *"My chair is 760 mm wide. Can I get to the quiet room?"* — a clearance
    verdict for that person. It answers **UNKNOWN**, not clear, because one
-   doorway was extracted at 78% confidence — and it says how old the data is.
+   doorway was extracted at 75% confidence — and it says how old the data is.
 3. *"The quiet-room doorway has a step now, report it."* — the server applies
    the change to **its own** copy, computes what it costs (*"removes step-free
    access to Quiet room"*), and a card lands in the review queue on screen.
