@@ -16,3 +16,7 @@ vite.config.d.ts
 *.local.md
 devpost-assets/
 spatialize-demo*.mp4
+
+.vercel
+.env*
+!.env.example

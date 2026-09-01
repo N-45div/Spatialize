@@ -22,6 +22,8 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: SPATIALIZE_OPENROUTER_MODEL
         value: google/gemini-3.6-flash
       - key: SPATIALIZE_STT_MODEL

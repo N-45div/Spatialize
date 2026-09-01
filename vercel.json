@@ -1,0 +1,17 @@
+{
+  "services": {
+    "spatialize": {
+      "root": ".",
+      "framework": "vite"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "spatialize"
+      }
+    }
+  ]
+}

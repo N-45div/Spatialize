@@ -74,10 +74,36 @@ const evaluate = async (expression) => {
   return reply.result?.result?.value ?? null;
 };
 
-/** Invoke a tool the way the browser does: through the host's testing surface. */
-const viaHost = async (name, args = {}) =>
+/**
+ * The browser's own tool surface. Chrome 149-151 exposed it as
+ * `navigator.modelContextTesting`; 152 folded it onto `document.modelContext`
+ * itself, and takes an object where the older one took a JSON string. Either
+ * way this is the host calling the tools, not our code.
+ */
+const HOST = `(navigator.modelContextTesting ?? document.modelContext)`;
+const viaHost = async (name, args = {}) => {
+  const result = await callHost(name, args);
+  // A host that throws is a failed step, not a crashed harness.
+  return typeof result === "string" || result === null
+    ? { isError: true, text: String(result) }
+    : result;
+};
+
+const callHost = async (name, args = {}) =>
   evaluate(`(async () => {
-    const r = await navigator.modelContextTesting.executeTool(${JSON.stringify(name)}, ${JSON.stringify(JSON.stringify(args))});
+    const host = ${HOST};
+    let r;
+    if (host.listTools) {
+      // Chrome 149-151: tool name plus a JSON string of arguments.
+      r = await host.executeTool(${JSON.stringify(name)}, ${JSON.stringify(JSON.stringify(args))});
+    } else {
+      // Chrome 152: the RegisteredTool object from getTools(), and the
+      // arguments still as a JSON string.
+      const tools = await host.getTools();
+      const tool = tools.find((candidate) => candidate.name === ${JSON.stringify(name)});
+      if (!tool) throw new Error("no tool named ${name}");
+      r = await host.executeTool(tool, ${JSON.stringify(JSON.stringify(args))});
+    }
     const v = typeof r === "string" ? JSON.parse(r) : r;
     return { isError: !!v.isError, text: (v.content ?? []).map(c => c.text).join("\\n") };
   })()`);
@@ -115,7 +141,11 @@ async function main() {
   check("host sees a venue record; write tools published", withRecord, await evaluate("document.querySelector('.dock-meta')?.textContent"));
 
   const listed = await evaluate(
-    "(async () => (await navigator.modelContextTesting.listTools()).map(x => x.name).sort())()"
+    `(async () => {
+      const host = ${HOST};
+      const tools = await (host.listTools ? host.listTools() : host.getTools());
+      return tools.map((tool) => tool.name).sort();
+    })()`
   );
   check(
     "host lists 14 tools",
