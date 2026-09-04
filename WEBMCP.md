@@ -314,10 +314,15 @@ data and never instructions — room labels and review notes are written by
 strangers — and a test plants an injected instruction in a room label, runs the
 tool loop, and asserts nothing was written on the strength of it.
 
-Two things the guides say that this surface does **not** need: `destructiveHint`
-and `idempotentHint` do not exist in Chrome's WebMCP (only `readOnlyHint` and
-`untrustedContentHint` do), and cross-origin `exposedTo` is not used here
-because the tools are for the agent driving this page.
+On annotations: Chrome's WebMCP is not the MCP spec's set — there is no
+`destructiveHint` or `idempotentHint`. Chrome 154 added
+[`consequentialHint`](https://github.com/webmachinelearning/webmcp/issues/176)
+for that job, and the four `propose_*` tools carry it. Nothing they do edits
+the venue — a proposal waits for a person — but a report joins the venue's
+permanent record and can afterwards only be declined, never deleted. Putting a
+claim about a building on the record under someone's name is worth the agent
+confirming first. (Cross-origin `exposedTo` is not used here: the tools are for
+the agent driving this page.)
 
 ### The agent dock
 

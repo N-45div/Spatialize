@@ -28,10 +28,16 @@ export interface ToolResult {
  * is the important one for Spatialize: it separates the questions an agent may
  * answer freely from the writes that have to clear the topology gate.
  */
+/**
+ * Chrome's WebMCP annotations. Note this is not the MCP spec's set: there is
+ * no `destructiveHint` or `idempotentHint` here. The destructive signal is
+ * `consequentialHint`, added in Chrome 154 — set it on a tool whose call a
+ * person should confirm first.
+ */
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
+  /** High-stakes, irreversible or real-world action. Chrome 154+. */
+  consequentialHint?: boolean;
   untrustedContentHint?: boolean;
 }
 

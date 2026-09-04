@@ -320,7 +320,12 @@ export function buildTools(context: ToolContext): ToolDefinition[] {
   // and capped on the way in, and a person approves each one.
   const readOnly = { readOnlyHint: true, untrustedContentHint: true } as const;
   // Write tools echo venue labels too, in their refusals and option lists.
-  const writes = { untrustedContentHint: true } as const;
+  // consequentialHint (Chrome 154+) asks the agent to confirm with the person
+  // before calling. Nothing here edits the venue — a proposal waits for a
+  // human — but a report goes onto the venue's permanent record and cannot be
+  // deleted afterwards, only declined. Putting a claim about a building on the
+  // record under someone's name is worth a confirmation.
+  const writes = { untrustedContentHint: true, consequentialHint: true } as const;
 
   const tools: ToolDefinition[] = [
     {
