@@ -1,0 +1,23 @@
+{
+  "projectId": "tubqyqod",
+  "dataset": "production",
+  "contentMode": "sanity",
+  "seedDocuments": 26,
+  "runId": "run_demo_f1819d3c",
+  "verdicts": {
+    "studio-mark:800": "CLEAR",
+    "studio-mark:1300": "BLOCKED",
+    "gallery-mark:800": "BLOCKED"
+  },
+  "previewPublished": false,
+  "persisted": {
+    "accessVersion": 2,
+    "position": [
+      13.5,
+      5.3
+    ],
+    "reviews": 1
+  },
+  "quietRoomVerdict": "UNKNOWN",
+  "contextConfigured": false
+}

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:access": "node scripts/dev-access.mjs",
+    "dev:studio": "npm run dev --prefix sanity",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run --exclude tests/evals/tool-selection.test.ts",

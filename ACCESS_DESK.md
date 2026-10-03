@@ -42,14 +42,48 @@ the live-agent switch once Sanity is configured. The route caption shows
 Harbor Arts and all seeded reports, notices, and obstacles are fictional fixtures.
 The sidebar labels this even when these documents are hosted in Sanity.
 
-## Connect Sanity later
+## Connected Sanity project
+
+The standalone Studio is configured for project **Divij (`tubqyqod`)**, dataset
+**`production`**. Hosted editor: https://spatialize-tubqyqod.sanity.studio/.
+The root Vite app continues querying Sanity through the Python API; no Sanity
+token is sent to the frontend. Local credentials are in the ignored root `.env`.
+`sanity/.env.local` contains only public project coordinates.
+
+From the root, with the backend environment active:
+
+```powershell
+python scripts/check-sanity.py
+python scripts/sanity-command.py schemas deploy
+python scripts/seed-sanity.py --write
+python scripts/sanity-command.py deploy --url spatialize-tubqyqod --schema-required --yes
+npm run dev:access
+# Separate terminal, if you want a local editor:
+npm run dev:studio
+```
+
+The CLI wrapper passes the project token through the child environment and
+redacts it from output. Seed writes preserve existing documents and human edits.
+The local Studio origin `http://localhost:3333` is already allowed by the project.
+Studio sign-in uses your Sanity user account, separately from the server token.
+
+Live verification passed: 800 mm studio CLEAR, 1300 mm BLOCKED, gallery trolley
+BLOCKED, preview without publication, reviewed move persisted at access v2 in
+Sanity, and quiet-room UNKNOWN with conflicting sources. See
+`sanity-live-verification.json`. A diagnostic run and its explicitly synthetic
+review source remain in the dataset as verification evidence.
+
+**Context is a separate setup:** Content Lake is connected, but the Context
+endpoint and organization token are not configured yet. Do not reuse the project API token as a Context token.
+
+## Configure another project or finish Context
 
 1. Create a project and dataset. Copy `.env.example` to `.env` and set
    `SANITY_PROJECT_ID`, `SANITY_DATASET`, and a server-only project read/write
    token in `SANITY_API_TOKEN`. No token uses a `VITE_` prefix.
 2. In `sanity/`, run `npm ci`. Set `SANITY_STUDIO_PROJECT_ID` and
    `SANITY_STUDIO_DATASET` in that shell, then run `npm run dev`.
-   Studio's fallback `demo1234` is a build placeholder, not a working project.
+   Both Studio configs default to `tubqyqod`; the Studio variables override it.
 3. Inspect `python scripts/seed-sanity.py --dry-run`. Run it with `--write` to
    create missing synthetic demo documents. Repeat runs preserve human edits.
 4. Deploy the schema with `npm run schema:deploy` from `sanity/`.
@@ -57,6 +91,8 @@ The sidebar labels this even when these documents are hosted in Sanity.
    Build a Knowledge Base from this venue's `accessSource` documents. Suggested
    purpose: "Explain Harbor Arts access evidence, preserving unresolved
    visitor/venue disagreements and distinguishing synthetic examples from observations."
+   Dataset source: project `tubqyqod`, dataset `production`, filter
+   `_type == "accessSource" && venue._ref == "harbor-arts-ground"`.
    Do not turn a disputed report into settled ground truth merely because a
    venue reviewer declined it. Inspect the generated entries and rebuild after
    editing sources; current notices are queried directly from Content Lake.
