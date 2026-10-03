@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Landing } from "./components/Landing";
 import { SpatialCanvas } from "./components/SpatialCanvas";
+import { AccessDesk, type AccessVisual } from "./components/AccessDesk";
 import { Tour } from "./components/Tour";
 import { sampleScene } from "./data/sample-scene";
 import { SpatialSceneSchema, type SpatialScene } from "./domain/spatial-scene";
@@ -64,6 +65,7 @@ function parseScene(raw: unknown): SpatialScene | null {
 }
 
 export default function App() {
+  const [accessVisual, setAccessVisual] = useState<AccessVisual>({ obstacles: [], preview: [], route: null, focusedId: null });
   const [view, setView] = useState(window.location.hash === "#studio" ? "studio" : "landing");
   const [liveScene, setLiveScene] = useState<SpatialScene | null>(null);
   const scene = liveScene ?? sampleScene;
@@ -84,6 +86,12 @@ export default function App() {
     [scene, destinations, destinationChoice]
   );
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
+  const handleAccessVisual = useCallback((visual: AccessVisual) => {
+    setAccessVisual(visual);
+    if (visual.focusedId && scene.landmarks.some(item => item.id === visual.focusedId)) {
+      setDestination(visual.focusedId);
+    }
+  }, [scene]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [sourceName, setSourceName] = useState("ground-floor-plan.pdf");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "stored" | "error">("idle");
@@ -158,7 +166,7 @@ export default function App() {
       if (isDemo) {
         setSourceName("harbor-arts-demo.png");
         setUploadState("stored");
-        setUploadMessage("Demo venue loaded · voice is live");
+        setUploadMessage("Demo venue loaded · access desk ready");
         setDemoNotice(true);
       }
       return true;
@@ -606,10 +614,11 @@ export default function App() {
             <div><i /> {scene.landmarks.length} landmarks</div>
           </div>
 
+          <AccessDesk key={`${runId}:${sceneVersion}`} runId={runId} scene={scene} sceneVersion={sceneVersion} onVisual={handleAccessVisual} />
           <div className="section-label">Ask the venue</div>
           {demoNotice && (
             <div className="demo-notice" role="status">
-              <b>Demo venue loaded — voice is live.</b>
+              <b>Demo venue loaded — ready to explore.</b>
               <span>No upload needed. Try one of these, spoken or typed:</span>
               <div className="demo-prompts">
                 <button onClick={() => setAskText("How far is the studio from the entrance?")}>
@@ -736,7 +745,8 @@ export default function App() {
         </aside>
 
         <section className="viewport" data-tour="viewport">
-          <SpatialCanvas scene={scene} route={route} selectedId={destination} mode={viewMode} />
+          <SpatialCanvas scene={scene} route={accessVisual.route ?? route} selectedId={accessVisual.focusedId ?? destination} mode={viewMode}
+            obstacles={accessVisual.obstacles} previewObstacles={accessVisual.preview} />
           <div className="viewport-glow" />
           <AgentPanel
             scene={scene}

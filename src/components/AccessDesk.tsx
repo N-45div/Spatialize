@@ -1,0 +1,166 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Point, SpatialScene } from "../domain/spatial-scene";
+import { accessRequest, type AccessAnswer, type AccessSnapshot, type MovePreview, type Obstacle, type ObstacleMove } from "../lib/access-api";
+
+export interface AccessVisual {
+  obstacles: Obstacle[];
+  preview: Obstacle[];
+  route: Point[] | null;
+  focusedId: string | null;
+}
+
+export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
+  runId: string | null; scene: SpatialScene; sceneVersion: number;
+  onVisual: (visual: AccessVisual) => void;
+}) {
+  const [snapshot, setSnapshot] = useState<AccessSnapshot | null>(null);
+  const [answer, setAnswer] = useState<AccessAnswer | null>(null);
+  const [destination, setDestination] = useState("studio-mark");
+  const [clearance, setClearance] = useState(800);
+  const [question, setQuestion] = useState("Can I reach this room today? Show the evidence.");
+  const [useAgent, setUseAgent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<MovePreview | null>(null);
+  const [obstacleId, setObstacleId] = useState("gallery-trolley");
+  const [roomId, setRoomId] = useState("gallery");
+  const [x, setX] = useState(13.5);
+  const [z, setZ] = useState(5.3);
+  const [reason, setReason] = useState("Move the trolley away from the entrance route");
+  const [decisionReason, setDecisionReason] = useState("Layout checked by the venue reviewer");
+  const requestId = useRef(0);
+  const destinations = scene.landmarks.filter(item => item.type === "destination");
+  const target = destinations.some(item => item.id === destination) ? destination : destinations[0]?.id ?? "";
+  const current = snapshot?.venueId === scene.id && snapshot.sceneVersion === sceneVersion ? snapshot : null;
+  const visibleAnswer = answer && current && answer.destinationId === target && answer.clearanceMm === clearance
+    && answer.sceneVersion === sceneVersion && answer.accessVersion === current.version ? answer : null;
+  const load = useCallback(async () => {
+    if (!runId) return;
+    const data = await accessRequest<AccessSnapshot>(runId);
+    setSnapshot(data);
+    onVisual({ obstacles: data.obstacles, preview: [], route: null, focusedId: null });
+    return data;
+  }, [runId, onVisual]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (runId) accessRequest<AccessSnapshot>(runId).then(data => {
+      if (!cancelled) {
+        setSnapshot(data);
+        setError(null);
+        onVisual({ obstacles: data.obstacles, preview: [], route: null, focusedId: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) setError(err instanceof Error ? err.message : "Evidence unavailable");
+    });
+    return () => { cancelled = true; requestId.current += 1; };
+  }, [runId, sceneVersion, onVisual]);
+
+  async function perform(action: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try { await action(); }
+    catch (err) { setError(err instanceof Error ? err.message : "The request failed"); }
+    finally { setBusy(false); }
+  }
+  async function check() {
+    if (!runId || !current) return;
+    const id = ++requestId.current;
+    await perform(async () => {
+      const data = await accessRequest<AccessAnswer>(runId, "/check", {
+        question, destinationId: target, clearanceMm: clearance, useAgent
+      });
+      if (id !== requestId.current) return;
+      setAnswer(data);
+      setPreview(null);
+      onVisual({ obstacles: current.obstacles, preview: [], route: data.route, focusedId: target });
+    });
+  }
+  function move(): ObstacleMove {
+    return { obstacleId, roomId, position: [x, z], rotation: current?.obstacles.find(o => o.id === obstacleId)?.rotation ?? 0,
+      reason, baseSceneVersion: sceneVersion, baseAccessVersion: current?.version ?? 1 };
+  }
+  function resetVisual() {
+    setPreview(null);
+    onVisual({ obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer?.route ?? null, focusedId: target });
+  }
+  return <section className="access-desk" aria-label="Access desk">
+    <div className="access-heading"><div><span className="section-label">Evidence + geometry</span><h2>Access desk</h2></div>
+      <span className="access-mode">{current ? current.contentMode === "sanity" ? "Sanity connected" : "Demo fixtures"
+        : error ? "Evidence unavailable" : "Connecting…"}</span></div>
+    <p className="access-intro">A route, a reason, and the evidence behind it.</p>
+    {current?.synthetic && <p className="fixture-note">Harbor Arts is a fictional venue. Reports and obstacles are synthetic demo fixtures.</p>}
+    {!runId && <p role="status">Connecting to the venue API…</p>}
+    <form onSubmit={event => { event.preventDefault(); void check(); }}>
+      <label>Destination<select value={target} disabled={busy} onChange={event => { setDestination(event.target.value); resetVisual(); }}>
+        {destinations.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select></label>
+      <label>Required clear width <span>mm</span><input type="number" min="300" max="2500" step="10" value={clearance}
+        disabled={busy} onChange={event => setClearance(Number(event.target.value))} /></label>
+      <label>Your question<textarea rows={2} value={question} maxLength={1200} disabled={busy}
+        onChange={event => setQuestion(event.target.value)} /></label>
+      <label className="access-toggle"><input type="checkbox" checked={useAgent} disabled={!current?.agentConfigured || busy}
+        onChange={event => setUseAgent(event.target.checked)} /> Research sources with the live agent</label>
+      {!current?.agentConfigured && <small className="access-muted">Live agent awaits Sanity Context configuration.</small>}
+      <button className="access-primary" disabled={busy || !current || !target || clearance < 300 || clearance > 2500}>
+        {busy ? "Checking…" : "Check access"}<span aria-hidden="true">↗</span>
+      </button>
+    </form>
+    {error && <div className="access-error" role="alert">{error}<button disabled={busy} onClick={() => void perform(async () => { await load(); })}>Reload evidence</button></div>}
+    {visibleAnswer && <article className={`access-answer ${visibleAnswer.verdict.toLowerCase()}`} aria-live="polite">
+      <div className="verdict-line"><strong>{visibleAnswer.verdict}</strong><span>{visibleAnswer.distanceMeters === null ? "No route" : `${visibleAnswer.distanceMeters} m route`}</span></div>
+      <p>{visibleAnswer.destinationLabel} · {visibleAnswer.clearanceMm} mm requested</p>
+      <ul>{visibleAnswer.reasons.map((item, i) => <li key={`${item.entityId}-${i}`}><button onClick={() => onVisual({
+        obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer.route, focusedId: item.entityId
+      })}>{item.message}<span>Locate ↗</span></button></li>)}</ul>
+      <small>Scene v{visibleAnswer.sceneVersion} · Access v{visibleAnswer.accessVersion} · {new Date(visibleAnswer.checkedAt).toLocaleTimeString()}</small>
+      <details className="evidence-list" open><summary>Evidence ({visibleAnswer.evidence.length})</summary>
+        {visibleAnswer.evidence.map(source => <article key={source.id} className="access-source">
+          <strong>{source.title}</strong><small>{source.publisher} · {new Date(source.observedAt).toLocaleDateString()}{source.synthetic ? " · Synthetic" : ""}</small>
+          <p>{source.body}</p>
+          {visibleAnswer.claims?.filter(c => c.sourceId === source.id).map(c => <div className="claim-line" key={c.id}>
+            {c.property}: {String(c.value)} <b>{c.status}</b>
+          </div>)}
+          {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noreferrer">Open source ↗</a>}
+        </article>)}
+      </details>
+      {visibleAnswer.agentSummary && <div className="agent-research"><strong>Agent source research</strong><p>{visibleAnswer.agentSummary}</p></div>}
+      {visibleAnswer.agentMessage && <p className="access-muted">{visibleAnswer.agentMessage}</p>}
+      {visibleAnswer.contextReads.length > 0 && <details><summary>Context retrieval record</summary>{visibleAnswer.contextReads.map((read, i) =>
+        <details key={i}><summary>{read.tool} · {read.successful ? "retrieved" : "failed"}</summary><pre>{read.output}</pre></details>)}</details>}
+      <details><summary>What this check covers</summary>{visibleAnswer.limitations.map(text => <p key={text}>{text}</p>)}</details>
+    </article>}
+    {current && current.obstacles.length > 0 && <details className="move-desk" open><summary>Rehearse an obstacle move</summary>
+      <p>Preview the impact. A person decides before the layout changes.</p>
+      <label>Obstacle<select value={obstacleId} disabled={busy} onChange={event => { setObstacleId(event.target.value); resetVisual(); }}>
+        {current.obstacles.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</select></label>
+      <label>Place in room<select value={roomId} disabled={busy} onChange={event => { setRoomId(event.target.value); resetVisual(); }}>
+        {current.rooms.map(room => <option key={room.id} value={room.id}>{room.label}</option>)}</select></label>
+      <div className="coordinate-row"><label>X · metres<input type="number" step="0.1" value={x} disabled={busy} onChange={event => { setX(Number(event.target.value)); resetVisual(); }} /></label>
+        <label>Z · metres<input type="number" step="0.1" value={z} disabled={busy} onChange={event => { setZ(Number(event.target.value)); resetVisual(); }} /></label></div>
+      <label>Reason<input value={reason} disabled={busy} maxLength={300} onChange={event => { setReason(event.target.value); resetVisual(); }} /></label>
+      <button className="access-secondary" disabled={busy || !runId || reason.trim().length < 3} onClick={() => void perform(async () => {
+        const data = await accessRequest<MovePreview>(runId!, "/preview", move()); setPreview(data);
+        onVisual({ obstacles: current.obstacles, preview: data.obstacles, route: visibleAnswer?.route ?? null, focusedId: obstacleId });
+      })}>Preview move</button>
+      {preview && preview.accessVersion === current.version && <div className="move-preview"><strong>Before → After · {preview.clearanceMm} mm</strong>
+        {preview.impact.map(item => <p key={item.destination}>{item.destination}<span>{item.before} → {item.after}</span></p>)}
+        <button disabled={busy} className="access-primary" onClick={() => void perform(async () => {
+          await accessRequest(runId!, "/proposals", move()); await load(); setPreview(null);
+        })}>Submit for review</button><button className="access-secondary" onClick={resetVisual}>Cancel preview</button>
+      </div>}
+      {current.proposals.length > 0 && <section className="access-reviews"><h3>Review record</h3>
+        <label>Decision reason<input value={decisionReason} maxLength={300} disabled={busy} onChange={event => setDecisionReason(event.target.value)} /></label>
+        {[...current.proposals].reverse().map(proposal => <article key={proposal.id}>
+          <strong>{proposal.move.reason}</strong><small>{proposal.status}{proposal.resultingVersion ? ` · Published access v${proposal.resultingVersion}` : ""}</small>
+          {proposal.decisionReason && <p>{proposal.decisionReason}</p>}
+          {proposal.status === "pending" && <div className="decision-buttons">{(["approve", "decline"] as const).map(decision => <button key={decision}
+            disabled={busy || decisionReason.trim().length < 3} onClick={() => void perform(async () => {
+              await accessRequest(runId!, `/proposals/${proposal.id}/decision`, { decision, reason: decisionReason }, true);
+              await load(); setPreview(null); setAnswer(null);
+            })}>{decision === "approve" ? "Approve move" : "Decline"}</button>)}</div>}
+        </article>)}
+      </section>}
+    </details>}
+  </section>;
+}

@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:access": "node scripts/dev-access.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/evals/tool-selection.test.ts",
     "evals": "vitest run tests/evals --reporter=verbose",
     "host-check": "node scripts/host-journey.mjs",
+    "test:browser": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

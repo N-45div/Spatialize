@@ -1,5 +1,11 @@
 # Spatialize
 
+**New: Access Desk** — sourced access claims, dated notices, personalized corridor
+checks, and obstacle moves previewed before human approval. Start with
+`npm run dev:access`; see [ACCESS_DESK.md](ACCESS_DESK.md) for setup, the demo,
+Sanity schemas, and verification. Sanity is optional for local fixture mode;
+the live Context agent requires account configuration.
+
 **A building that answers your agent from geometry — and refuses it when it's wrong.**
 
 Spatialize turns a flat floor plan into a validated 3D spatial twin, then

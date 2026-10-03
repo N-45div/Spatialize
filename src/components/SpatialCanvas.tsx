@@ -2,6 +2,9 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Point, SpatialScene } from "../domain/spatial-scene";
+import type { Obstacle } from "../lib/access-api";
+
+const NO_OBSTACLES: Obstacle[] = [];
 
 const roomColors = {
   public: 0xd8e6c3,
@@ -33,12 +36,16 @@ export function SpatialCanvas({
   scene,
   route,
   selectedId,
-  mode
+  mode,
+  obstacles = NO_OBSTACLES,
+  previewObstacles = NO_OBSTACLES
 }: {
   scene: SpatialScene;
   route: Point[];
   selectedId: string;
   mode: "3d" | "2d";
+  obstacles?: Obstacle[];
+  previewObstacles?: Obstacle[];
 }) {
   const host = useRef<HTMLDivElement>(null);
 
@@ -161,7 +168,44 @@ export function SpatialCanvas({
       threshold.position.set(door.position[0], blocked ? 0.58 : 0.34, door.position[1]);
       threshold.rotation.y = -door.rotation;
       world.add(threshold);
+      if (door.id === selectedId) {
+        const highlight = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.72, 32),
+          new THREE.MeshBasicMaterial({ color: 0xffcc62, side: THREE.DoubleSide }));
+        highlight.rotation.x = -Math.PI / 2;
+        highlight.position.set(door.position[0], 0.6, door.position[1]);
+        world.add(highlight);
+      }
     });
+
+    function drawObstacle(obstacle: Obstacle, preview: boolean) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(obstacle.width, mode === "2d" ? 0.12 : 0.9, obstacle.depth),
+        new THREE.MeshStandardMaterial({ color: preview ? 0x8de6c1 : 0xe89361,
+          transparent: preview, opacity: preview ? 0.5 : 1,
+          emissive: obstacle.id === selectedId ? 0x593c0a : 0x000000 }));
+      mesh.position.set(obstacle.position[0], mode === "2d" ? 0.4 : 0.75, obstacle.position[1]);
+      mesh.rotation.y = -obstacle.rotation;
+      mesh.castShadow = true;
+      world.add(mesh);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),
+        new THREE.LineBasicMaterial({ color: preview ? 0x8de6c1 : 0xffcb68 }));
+      edges.position.copy(mesh.position);
+      edges.rotation.copy(mesh.rotation);
+      world.add(edges);
+    }
+    obstacles.forEach(obstacle => drawObstacle(obstacle, false));
+    previewObstacles.filter(candidate => {
+      const current = obstacles.find(o => o.id === candidate.id);
+      return !current || current.position[0] !== candidate.position[0] || current.position[1] !== candidate.position[1]
+        || current.rotation !== candidate.rotation;
+    }).forEach(obstacle => drawObstacle(obstacle, true));
+
+    const focusedRoom = scene.rooms.find(room => room.id === selectedId);
+    if (focusedRoom) {
+      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+        focusedRoom.polygon.map(([x, z]) => new THREE.Vector3(x, 0.55, z))),
+        new THREE.LineBasicMaterial({ color: 0xffcc62 }));
+      world.add(line);
+    }
 
     const markerGroup = new THREE.Group();
     world.add(markerGroup);
@@ -197,12 +241,13 @@ export function SpatialCanvas({
     });
 
     if (route.length > 1) {
-      const curve = new THREE.CatmullRomCurve3(
-        route.map(([x, z]) => new THREE.Vector3(x, 0.48, z)),
-        false,
-        "catmullrom",
-        0.08
-      );
+      // Draw the same straight segments the corridor checker evaluates.
+      // A smoothed spline can cut corners across walls or obstacles.
+      const curve = new THREE.CurvePath<THREE.Vector3>();
+      route.slice(1).forEach(([x, z], index) => {
+        const [previousX, previousZ] = route[index];
+        curve.add(new THREE.LineCurve3(new THREE.Vector3(previousX, 0.48, previousZ), new THREE.Vector3(x, 0.48, z)));
+      });
       const path = new THREE.Mesh(
         new THREE.TubeGeometry(curve, Math.max(16, route.length * 8), 0.1, 12, false),
         new THREE.MeshStandardMaterial({
@@ -281,7 +326,7 @@ export function SpatialCanvas({
         }
       });
     };
-  }, [scene, route, selectedId, mode]);
+  }, [scene, route, selectedId, mode, obstacles, previewObstacles]);
 
   return <div className="spatial-canvas" ref={host} aria-label="Interactive 3D venue map" />;
 }

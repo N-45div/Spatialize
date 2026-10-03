@@ -85,7 +85,7 @@ export function AgentPanel({
   onReject: (proposal: Proposal) => void;
 }) {
   const session = useSyncExternalStore(subscribeToAgentSession, getAgentSession, getAgentSession);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const catalog = useMemo(() => describeToolSurface(scene), [scene]);
 
