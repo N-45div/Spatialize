@@ -1,3 +1,4 @@
+import { MagnifyingGlassIcon, InfoIcon, TrafficConeIcon, CheckCircleIcon, WarningCircleIcon, QuestionIcon, ArrowUpRightIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Point, SpatialScene } from "../domain/spatial-scene";
 import { accessRequest, type AccessAnswer, type AccessSnapshot, type MovePreview, type Obstacle, type ObstacleMove } from "../lib/access-api";
@@ -7,6 +8,7 @@ export interface AccessVisual {
   preview: Obstacle[];
   route: Point[] | null;
   focusedId: string | null;
+  verdict?: AccessAnswer["verdict"] | null;
 }
 
 export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
@@ -73,48 +75,50 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
       if (id !== requestId.current) return;
       setAnswer(data);
       setPreview(null);
-      onVisual({ obstacles: current.obstacles, preview: [], route: data.route, focusedId: target });
+      onVisual({ obstacles: current.obstacles, preview: [], route: data.route, focusedId: target, verdict: data.verdict });
     });
   }
   function move(): ObstacleMove {
     return { obstacleId, roomId, position: [x, z], rotation: current?.obstacles.find(o => o.id === obstacleId)?.rotation ?? 0,
       reason, baseSceneVersion: sceneVersion, baseAccessVersion: current?.version ?? 1 };
   }
-  function resetVisual() {
+  function resetVisual(clearRoute = false, focus = target) {
     setPreview(null);
-    onVisual({ obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer?.route ?? null, focusedId: target });
+    onVisual({ obstacles: current?.obstacles ?? [], preview: [], route: clearRoute ? null : visibleAnswer?.route ?? null, focusedId: focus, verdict: clearRoute ? null : visibleAnswer?.verdict });
   }
   return <section className="access-desk" aria-label="Access desk">
     <div className="access-heading"><div><span className="section-label">Evidence + geometry</span><h2>Access desk</h2></div>
-      <span className="access-mode">{current ? current.contentMode === "sanity" ? "Sanity connected" : "Demo fixtures"
+      <span className="access-mode" title={current?.synthetic ? "Fictional demo venue with synthetic evidence" : undefined}>{current ? current.contentMode === "sanity" ? "Sanity connected" : "Demo fixtures"
         : error ? "Evidence unavailable" : "Connecting…"}</span></div>
     <p className="access-intro">A route, a reason, and the evidence behind it.</p>
-    {current?.synthetic && <p className="fixture-note">Harbor Arts is a fictional venue. Reports and obstacles are synthetic demo fixtures.</p>}
+    {current?.synthetic && <p className="fixture-note" title="Harbor Arts is fictional. All reports and obstacles are synthetic demo fixtures."><InfoIcon size={18} aria-hidden="true" />Fictional demo venue / Synthetic evidence</p>}
     {!runId && <p role="status">Connecting to the venue API…</p>}
     <form onSubmit={event => { event.preventDefault(); void check(); }}>
-      <label>Destination<select value={target} disabled={busy} onChange={event => { setDestination(event.target.value); resetVisual(); }}>
+      <label>Destination<select value={target} disabled={busy} onChange={event => { setDestination(event.target.value); resetVisual(true, event.target.value); }}>
         {destinations.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select></label>
       <label>Required clear width <span>mm</span><input type="number" min="300" max="2500" step="10" value={clearance}
-        disabled={busy} onChange={event => setClearance(Number(event.target.value))} /></label>
+        disabled={busy} onChange={event => { setClearance(Number(event.target.value)); resetVisual(true); }} /></label>
       <label>Your question<textarea rows={2} value={question} maxLength={1200} disabled={busy}
         onChange={event => setQuestion(event.target.value)} /></label>
+      <details className="research-options"><summary>Source research (optional)</summary>
       <label className="access-toggle"><input type="checkbox" checked={useAgent} disabled={!current?.agentConfigured || busy}
         onChange={event => setUseAgent(event.target.checked)} /> Research sources with the live agent</label>
-      {!current?.agentConfigured && <small className="access-muted">Live agent awaits Sanity Context configuration.</small>}
+      {!current?.agentConfigured && <small className="access-muted">Source research available after Sanity setup.</small>}
+      </details>
       <button className="access-primary" disabled={busy || !current || !target || clearance < 300 || clearance > 2500}>
-        {busy ? "Checking…" : "Check access"}<span aria-hidden="true">↗</span>
+        <MagnifyingGlassIcon size={20} aria-hidden="true" />{busy ? "Checking..." : "Check access"}
       </button>
     </form>
     {error && <div className="access-error" role="alert">{error}<button disabled={busy} onClick={() => void perform(async () => { await load(); })}>Reload evidence</button></div>}
     {visibleAnswer && <article className={`access-answer ${visibleAnswer.verdict.toLowerCase()}`} aria-live="polite">
-      <div className="verdict-line"><strong>{visibleAnswer.verdict}</strong><span>{visibleAnswer.distanceMeters === null ? "No route" : `${visibleAnswer.distanceMeters} m route`}</span></div>
+      <div className="verdict-line"><strong>{visibleAnswer.verdict === "CLEAR" ? <CheckCircleIcon size={25} weight="fill" aria-hidden="true" /> : visibleAnswer.verdict === "BLOCKED" ? <WarningCircleIcon size={25} weight="fill" aria-hidden="true" /> : <QuestionIcon size={25} weight="fill" aria-hidden="true" />}{visibleAnswer.verdict}</strong><span>{visibleAnswer.distanceMeters === null ? "No route" : `${visibleAnswer.distanceMeters} m route`}</span></div>
       <p>{visibleAnswer.destinationLabel} · {visibleAnswer.clearanceMm} mm requested</p>
       <ul>{visibleAnswer.reasons.map((item, i) => <li key={`${item.entityId}-${i}`}><button onClick={() => onVisual({
-        obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer.route, focusedId: item.entityId
-      })}>{item.message}<span>Locate ↗</span></button></li>)}</ul>
-      <small>Scene v{visibleAnswer.sceneVersion} · Access v{visibleAnswer.accessVersion} · {new Date(visibleAnswer.checkedAt).toLocaleTimeString()}</small>
-      <details className="evidence-list" open><summary>Evidence ({visibleAnswer.evidence.length})</summary>
+        obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer.route, focusedId: item.entityId, verdict: visibleAnswer.verdict
+      })}>{item.message}<span>Locate <ArrowUpRightIcon size={14} aria-hidden="true" /></span></button></li>)}</ul>
+
+      <details className="evidence-list"><summary>Evidence ({visibleAnswer.evidence.length})</summary>
         {visibleAnswer.evidence.map(source => <article key={source.id} className="access-source">
           <strong>{source.title}</strong><small>{source.publisher} · {new Date(source.observedAt).toLocaleDateString()}{source.synthetic ? " · Synthetic" : ""}</small>
           <p>{source.body}</p>
@@ -123,14 +127,16 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
           </div>)}
           {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noreferrer">Open source ↗</a>}
         </article>)}
+      <small className="snapshot-meta">Scene v{visibleAnswer.sceneVersion} · Access v{visibleAnswer.accessVersion} · {new Date(visibleAnswer.checkedAt).toLocaleTimeString()}</small>
+      <details><summary>What this check covers</summary>{visibleAnswer.limitations.map(text => <p key={text}>{text}</p>)}</details>
       </details>
       {visibleAnswer.agentSummary && <div className="agent-research"><strong>Agent source research</strong><p>{visibleAnswer.agentSummary}</p></div>}
       {visibleAnswer.agentMessage && <p className="access-muted">{visibleAnswer.agentMessage}</p>}
       {visibleAnswer.contextReads.length > 0 && <details><summary>Context retrieval record</summary>{visibleAnswer.contextReads.map((read, i) =>
         <details key={i}><summary>{read.tool} · {read.successful ? "retrieved" : "failed"}</summary><pre>{read.output}</pre></details>)}</details>}
-      <details><summary>What this check covers</summary>{visibleAnswer.limitations.map(text => <p key={text}>{text}</p>)}</details>
+
     </article>}
-    {current && current.obstacles.length > 0 && <details className="move-desk" open><summary>Rehearse an obstacle move</summary>
+    {current && current.obstacles.length > 0 && <details className="move-desk"><summary><TrafficConeIcon size={22} aria-hidden="true" /><span>Rehearse an obstacle move</span><b>Review required</b></summary>
       <p>Preview the impact. A person decides before the layout changes.</p>
       <label>Obstacle<select value={obstacleId} disabled={busy} onChange={event => { setObstacleId(event.target.value); resetVisual(); }}>
         {current.obstacles.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</select></label>
@@ -147,7 +153,7 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
         {preview.impact.map(item => <p key={item.destination}>{item.destination}<span>{item.before} → {item.after}</span></p>)}
         <button disabled={busy} className="access-primary" onClick={() => void perform(async () => {
           await accessRequest(runId!, "/proposals", move()); await load(); setPreview(null);
-        })}>Submit for review</button><button className="access-secondary" onClick={resetVisual}>Cancel preview</button>
+        })}>Submit for review</button><button className="access-secondary" onClick={() => resetVisual()}>Cancel preview</button>
       </div>}
       {current.proposals.length > 0 && <section className="access-reviews"><h3>Review record</h3>
         <label>Decision reason<input value={decisionReason} maxLength={300} disabled={busy} onChange={event => setDecisionReason(event.target.value)} /></label>

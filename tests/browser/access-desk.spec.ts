@@ -13,6 +13,7 @@ test("personal clearance and sourced evidence work in an ordinary browser", asyn
   await expect(desk.getByText("Demo fixtures", { exact: true })).toBeVisible();
   await desk.getByRole("button", { name: "Check access", exact: true }).click();
   await expect(desk.locator(".verdict-line strong")).toHaveText("CLEAR");
+  await desk.locator(".evidence-list > summary").click();
   await expect(desk.getByText("Harbor Arts access guide", { exact: true })).toBeVisible();
   await desk.getByLabel("Required clear width").fill("1300");
   await desk.getByRole("button", { name: "Check access", exact: true }).click();
@@ -26,6 +27,7 @@ test("preview does not publish; approval persists and exposes conflicting claims
   await desk.getByRole("combobox", { name: "Destination", exact: true }).selectOption("gallery-mark");
   await desk.getByRole("button", { name: "Check access", exact: true }).click();
   await expect(desk.locator(".verdict-line strong")).toHaveText("BLOCKED");
+  await desk.locator(".move-desk > summary").click();
   await desk.getByRole("button", { name: "Preview move", exact: true }).click();
   await expect(desk.locator(".move-preview")).toContainText("BLOCKED → CLEAR");
   await expect(desk.locator(".verdict-line strong")).toHaveText("BLOCKED");
@@ -37,6 +39,7 @@ test("preview does not publish; approval persists and exposes conflicting claims
   await desk.getByRole("combobox", { name: "Destination", exact: true }).selectOption("quiet-mark");
   await desk.getByRole("button", { name: "Check access", exact: true }).click();
   await expect(desk.locator(".verdict-line strong")).toHaveText("UNKNOWN");
+  await desk.locator(".evidence-list > summary").click();
   await expect(desk.getByText("Visitor report: quiet-room threshold", { exact: true })).toBeVisible();
   await expect(desk.getByText("disputed", { exact: true })).toBeVisible();
   await desk.getByRole("button", { name: /Sources disagree/ }).click();
@@ -46,6 +49,7 @@ test("preview does not publish; approval persists and exposes conflicting claims
 
 test("an invalid move is rejected with useful feedback", async ({ page }) => {
   const desk = page.getByRole("region", { name: "Access desk", exact: true });
+  await desk.locator(".move-desk > summary").click();
   await desk.getByLabel("X · metres", { exact: true }).fill("7.1");
   await desk.getByRole("button", { name: "Preview move", exact: true }).click();
   await expect(desk.getByRole("alert")).toContainText("footprint must fit");

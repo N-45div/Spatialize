@@ -20,10 +20,18 @@ Local storage needs one API worker. Local fixtures require no model or Sanity ke
 
 ## Two-minute demo
 
+The redesigned studio puts the live model beside the access workflow. Open
+**Evidence** for citations, **Rehearse an obstacle move** for previews and review,
+**Source & venue tools** for upload and voice, and **Scene & extraction details**
+for the original geometry review queue. **Source research (optional)** contains
+the live-agent switch once Sanity is configured. The route caption shows
+**Not checked** until an access check returns a verdict.
+
 1. Check Learning studio at 800 mm: **CLEAR** for the stored route checks.
 2. Request 1300 mm: **BLOCKED** by the 1200 mm studio doorway.
 3. Check Gallery one at 800 mm: **BLOCKED** by the trolley.
-4. Preview moving the trolley to Gallery one, X=13.5, Z=5.3 metres. The published
+4. Open **Rehearse an obstacle move** and preview moving the trolley to Gallery one,
+   X=13.5, Z=5.3 metres. The published
    location remains unchanged; a mint ghost shows the candidate placement.
 5. Submit and approve with a reviewer reason. Access version increments and the
    decision persists after reload. A new source records the approved placement.
