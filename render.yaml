@@ -30,3 +30,14 @@ services:
         value: universal-3-5-pro
       - key: SPATIALIZE_ALLOWED_ORIGINS
         sync: false
+      # Access desk: evidence lives in Sanity; the agent reads a Context Knowledge Base.
+      - key: SANITY_PROJECT_ID
+        value: tubqyqod
+      - key: SANITY_DATASET
+        value: production
+      - key: SANITY_API_TOKEN
+        sync: false
+      - key: SANITY_CONTEXT_URL
+        value: https://api.sanity.io/v1/context/organizations/ottnv0qew/mcp/spatialize-access-evidence
+      - key: SANITY_CONTEXT_TOKEN
+        sync: false
