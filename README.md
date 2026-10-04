@@ -12,9 +12,9 @@ written by a model.
 **Live app:** https://spatialize-pink.vercel.app/#studio
 **API:** https://spatialize.onrender.com (free instance; the first request after an idle spell wakes it, which
 takes a few seconds)
-**Docs:** [ACCESS_DESK.md](ACCESS_DESK.md) (evidence, Sanity, the evidence agent) ·
-[WEBMCP.md](WEBMCP.md) (the agent surface) · [EVALS.md](EVALS.md) (every claim, measured) ·
-[ARCHITECTURE.md](ARCHITECTURE.md)
+**Docs:** [ACCESS_DESK.md](https://github.com/N-45div/Spatialize/blob/main/ACCESS_DESK.md) (evidence, Sanity, the evidence agent) ·
+[EVALS.md](https://github.com/N-45div/Spatialize/blob/main/EVALS.md) (every claim, measured) ·
+[ARCHITECTURE.md](https://github.com/N-45div/Spatialize/blob/main/ARCHITECTURE.md)
 
 The demo venue, Harbor Arts Centre, is fictional, and its reports and obstacles are labelled synthetic fixtures.
 
@@ -71,7 +71,7 @@ and it is edited in a hosted Studio at https://spatialize-tubqyqod.sanity.studio
   publish over the same version.
 
 **The evidence agent** reads a **Sanity Context Knowledge Base** built from those documents by a GROQ
-projection ([`sanity/knowledge-base.groq`](sanity/knowledge-base.groq)) that joins each source to the claims,
+projection ([`sanity/knowledge-base.groq`](https://github.com/N-45div/Spatialize/blob/main/sanity/knowledge-base.groq)) that joins each source to the claims,
 notices and obstacles citing it, with their status. Visitor-submitted review records are left out, so nothing
 typed into the public app reaches the agent. The agent uses the Knowledge Base MCP endpoint (`initial_context`,
 then `knowledge_base_read`) through the OpenAI Responses API. It explains the evidence and its disagreements;
@@ -79,7 +79,7 @@ the computed verdict is handed to it as authoritative, and it cannot change it.
 
 When the Knowledge Base was first built, Sanity Context flagged the quiet-room conflict on its own. It stays
 open by design: a standing Knowledge Base instruction keeps both claims side by side with their source, date
-and status. Details, setup and the rebuild script are in [ACCESS_DESK.md](ACCESS_DESK.md).
+and status. Details, setup and the rebuild script are in [ACCESS_DESK.md](https://github.com/N-45div/Spatialize/blob/main/ACCESS_DESK.md).
 
 ## Nothing an agent says goes live
 
@@ -120,7 +120,7 @@ Tools register per venue on `document.modelContext` and follow Chrome's publishe
 [best practices](https://developer.chrome.com/docs/ai/webmcp/best-practices),
 [tool security](https://developer.chrome.com/docs/ai/webmcp/secure-tools) and
 [agent security](https://developer.chrome.com/docs/agents/security) guidance. Tests hold every result inside the
-1.5K budget on a venue far larger than the demo. Full design notes are in [WEBMCP.md](WEBMCP.md).
+1.5K budget on a venue far larger than the demo. The tools live in [`src/webmcp/`](https://github.com/N-45div/Spatialize/tree/main/src/webmcp).
 
 ## Speak instead of type
 
@@ -142,10 +142,14 @@ a WebMCP agent, with the spoken sentence as its provenance.
   WebMCP surface. It passed **13 of 13** on Chrome 152.
 - **Live Sanity and Context**: `scripts/verify-live.py` runs the Access Desk journey against the real project
   and Knowledge Base endpoint and records the result in
-  [`sanity-live-verification.json`](sanity-live-verification.json), including the agent's actual
+  [`sanity-live-verification.json`](https://github.com/N-45div/Spatialize/blob/main/sanity-live-verification.json), including the agent's actual
   `knowledge_base_read` call.
+- **The evidence agent, measured**: `scripts/agent-eval.py` asks six questions four times each against the live
+  Knowledge Base. In all 24 runs the agent made a successful `knowledge_base_read` and stated the computed
+  verdict, and it never stated a different one; 23 of 24 named a source by its title. Median answer time was
+  6.5 s. Every answer is kept in [`agent-eval.json`](https://github.com/N-45div/Spatialize/blob/main/agent-eval.json).
 
-Full tables are in [EVALS.md](EVALS.md).
+Full tables are in [EVALS.md](https://github.com/N-45div/Spatialize/blob/main/EVALS.md).
 
 ## How it's built
 
@@ -155,7 +159,7 @@ manifests for provenance.
 
 | Capability | Provider |
 |---|---|
-| Access evidence and review publication | Sanity Content Lake, queried with GROQ; standalone Studio in [`sanity/`](sanity) |
+| Access evidence and review publication | Sanity Content Lake, queried with GROQ; standalone Studio in [`sanity/`](https://github.com/N-45div/Spatialize/tree/main/sanity) |
 | Evidence agent | OpenAI Responses API with the Sanity Context Knowledge Base MCP endpoint |
 | Voice agent, speech-to-text, text-to-speech | OpenAI: `gpt-5.6-luna`, `gpt-4o-mini-transcribe`, `gpt-4o-mini-tts` |
 | Floor-plan extraction | Gemini vision inside genblaze's `AgentLoop` (generate, validate, refine), with the topology gate as evaluator |
@@ -189,7 +193,7 @@ SPATIALIZE_ALLOWED_ORIGINS                              # CORS ("*" for developm
 ```
 
 Tokens stay on the server; nothing with a `VITE_` prefix holds a secret. The Sanity Studio runs with
-`npm run dev:studio`, and [ACCESS_DESK.md](ACCESS_DESK.md) covers seeding, the schema and building the
+`npm run dev:studio`, and [ACCESS_DESK.md](https://github.com/N-45div/Spatialize/blob/main/ACCESS_DESK.md) covers seeding, the schema and building the
 Knowledge Base.
 
 ### Tests
@@ -213,7 +217,7 @@ docker build -t spatialize .
 docker run -p 8787:8787 --env-file .env spatialize
 ```
 
-The repo ships a [render.yaml](render.yaml) blueprint, including the Sanity settings, and a keepalive GitHub
+The repo ships a [render.yaml](https://github.com/N-45div/Spatialize/blob/main/render.yaml) blueprint, including the Sanity settings, and a keepalive GitHub
 Action that pings `/health` so a free instance stays warm.
 
 ## Honesty box
@@ -235,4 +239,4 @@ Action that pings `/health` so a free instance stays warm.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/N-45div/Spatialize/blob/main/LICENSE).
