@@ -1,4 +1,4 @@
-import { MagnifyingGlassIcon, InfoIcon, TrafficConeIcon, CheckCircleIcon, WarningCircleIcon, QuestionIcon, ArrowUpRightIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, InfoIcon, TrafficConeIcon, CheckCircleIcon, WarningCircleIcon, QuestionIcon, ArrowUpRightIcon, BooksIcon, SpinnerGapIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Point, SpatialScene } from "../domain/spatial-scene";
 import { accessRequest, type AccessAnswer, type AccessSnapshot, type MovePreview, type Obstacle, type ObstacleMove } from "../lib/access-api";
@@ -20,7 +20,8 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
   const [destination, setDestination] = useState("studio-mark");
   const [clearance, setClearance] = useState(800);
   const [question, setQuestion] = useState("Can I reach this room today? Show the evidence.");
-  const [useAgent, setUseAgent] = useState(false);
+  const [useAgent, setUseAgent] = useState(true);
+  const [researching, setResearching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<MovePreview | null>(null);
@@ -36,6 +37,8 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
   const current = snapshot?.venueId === scene.id && snapshot.sceneVersion === sceneVersion ? snapshot : null;
   const visibleAnswer = answer && current && answer.destinationId === target && answer.clearanceMm === clearance
     && answer.sceneVersion === sceneVersion && answer.accessVersion === current.version ? answer : null;
+  const agentOn = useAgent && Boolean(current?.agentConfigured);
+  const knowledgeReads = visibleAnswer?.contextReads.filter(read => read.successful && read.tool === "knowledge_base_read").length ?? 0;
   const load = useCallback(async () => {
     if (!runId) return;
     const data = await accessRequest<AccessSnapshot>(runId);
@@ -68,15 +71,28 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
   async function check() {
     if (!runId || !current) return;
     const id = ++requestId.current;
+    const body = { question, destinationId: target, clearanceMm: clearance };
+    let checked = false;
+    // The computed verdict shows at once; the agent's source reading follows when it arrives.
     await perform(async () => {
-      const data = await accessRequest<AccessAnswer>(runId, "/check", {
-        question, destinationId: target, clearanceMm: clearance, useAgent
-      });
+      const data = await accessRequest<AccessAnswer>(runId, "/check", { ...body, useAgent: false });
       if (id !== requestId.current) return;
+      checked = true;
       setAnswer(data);
       setPreview(null);
       onVisual({ obstacles: current.obstacles, preview: [], route: data.route, focusedId: target, verdict: data.verdict });
     });
+    if (!checked || !agentOn) return;
+    setResearching(true);
+    try {
+      const data = await accessRequest<AccessAnswer>(runId, "/check", { ...body, useAgent: true });
+      if (id === requestId.current) setAnswer(data);
+    } catch (err) {
+      if (id === requestId.current) setAnswer(previous => previous && { ...previous, agentStatus: "unavailable",
+        agentMessage: err instanceof Error ? err.message : "Source research failed. The computed verdict stands." });
+    } finally {
+      if (id === requestId.current) setResearching(false);
+    }
   }
   function move(): ObstacleMove {
     return { obstacleId, roomId, position: [x, z], rotation: current?.obstacles.find(o => o.id === obstacleId)?.rotation ?? 0,
@@ -84,6 +100,7 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
   }
   function resetVisual(clearRoute = false, focus = target) {
     setPreview(null);
+    if (clearRoute) { requestId.current += 1; setResearching(false); }
     onVisual({ obstacles: current?.obstacles ?? [], preview: [], route: clearRoute ? null : visibleAnswer?.route ?? null, focusedId: focus, verdict: clearRoute ? null : visibleAnswer?.verdict });
   }
   return <section className="access-desk" aria-label="Access desk">
@@ -99,14 +116,16 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
       </select></label>
       <label>Required clear width <span>mm</span><input type="number" min="300" max="2500" step="10" value={clearance}
         disabled={busy} onChange={event => { setClearance(Number(event.target.value)); resetVisual(true); }} /></label>
-      <label>Your question<textarea rows={2} value={question} maxLength={1200} disabled={busy}
-        onChange={event => setQuestion(event.target.value)} /></label>
-      <details className="research-options"><summary>Source research (optional)</summary>
-      <label className="access-toggle"><input type="checkbox" checked={useAgent} disabled={!current?.agentConfigured || busy}
-        onChange={event => setUseAgent(event.target.checked)} /> Research sources with the live agent</label>
-      {!current?.agentConfigured && <small className="access-muted">Source research available after Sanity setup.</small>}
-      </details>
-      <button className="access-primary" disabled={busy || !current || !target || clearance < 300 || clearance > 2500}>
+      <div className="agent-ask">
+        <div className="agent-ask-head"><BooksIcon size={22} aria-hidden="true" />
+          <span><strong>Evidence agent</strong><small>Reads this venue's sources through a Sanity Context Knowledge Base</small></span>
+          <label className="access-toggle"><input type="checkbox" checked={agentOn} disabled={!current?.agentConfigured || busy || researching}
+            onChange={event => setUseAgent(event.target.checked)} /> Ask</label></div>
+        {agentOn && <label>Your question<textarea rows={2} value={question} maxLength={1200} disabled={busy || researching}
+          onChange={event => setQuestion(event.target.value)} /></label>}
+        {current && !current.agentConfigured && <small className="access-muted">The agent is not configured on this server. The route check below still runs on the structured evidence.</small>}
+      </div>
+      <button className="access-primary" disabled={busy || researching || !current || !target || clearance < 300 || clearance > 2500}>
         <MagnifyingGlassIcon size={20} aria-hidden="true" />{busy ? "Checking..." : "Check access"}
       </button>
     </form>
@@ -117,6 +136,13 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
       <ul>{visibleAnswer.reasons.map((item, i) => <li key={`${item.entityId}-${i}`}><button onClick={() => onVisual({
         obstacles: current?.obstacles ?? [], preview: [], route: visibleAnswer.route, focusedId: item.entityId, verdict: visibleAnswer.verdict
       })}>{item.message}<span>Locate <ArrowUpRightIcon size={14} aria-hidden="true" /></span></button></li>)}</ul>
+      {researching && <p className="agent-research pending" role="status"><SpinnerGapIcon size={16} aria-hidden="true" />Agent is reading the Knowledge Base…</p>}
+      {visibleAnswer.agentSummary && <div className="agent-research"><strong><BooksIcon size={18} aria-hidden="true" />What the sources say</strong>
+        <p>{visibleAnswer.agentSummary}</p>
+        <small>{knowledgeReads} Knowledge Base {knowledgeReads === 1 ? "read" : "reads"} · The verdict above is computed from structured evidence; the agent cannot change it.</small></div>}
+      {visibleAnswer.agentMessage && !researching && <p className="access-muted">{visibleAnswer.agentMessage}</p>}
+      {visibleAnswer.contextReads.length > 0 && <details className="context-reads"><summary>Context retrieval record ({visibleAnswer.contextReads.length} calls)</summary>{visibleAnswer.contextReads.map((read, i) =>
+        <details key={i}><summary>{read.tool} · {read.successful ? "retrieved" : "failed"}</summary>{read.arguments && read.arguments !== "{}" && <code>{read.arguments}</code>}<pre>{read.output}</pre></details>)}</details>}
 
       <details className="evidence-list"><summary>Evidence ({visibleAnswer.evidence.length})</summary>
         {visibleAnswer.evidence.map(source => <article key={source.id} className="access-source">
@@ -130,10 +156,6 @@ export function AccessDesk({ runId, scene, sceneVersion, onVisual }: {
       <small className="snapshot-meta">Scene v{visibleAnswer.sceneVersion} · Access v{visibleAnswer.accessVersion} · {new Date(visibleAnswer.checkedAt).toLocaleTimeString()}</small>
       <details><summary>What this check covers</summary>{visibleAnswer.limitations.map(text => <p key={text}>{text}</p>)}</details>
       </details>
-      {visibleAnswer.agentSummary && <div className="agent-research"><strong>Agent source research</strong><p>{visibleAnswer.agentSummary}</p></div>}
-      {visibleAnswer.agentMessage && <p className="access-muted">{visibleAnswer.agentMessage}</p>}
-      {visibleAnswer.contextReads.length > 0 && <details><summary>Context retrieval record</summary>{visibleAnswer.contextReads.map((read, i) =>
-        <details key={i}><summary>{read.tool} · {read.successful ? "retrieved" : "failed"}</summary><pre>{read.output}</pre></details>)}</details>}
 
     </article>}
     {current && current.obstacles.length > 0 && <details className="move-desk"><summary><TrafficConeIcon size={22} aria-hidden="true" /><span>Rehearse an obstacle move</span><b>Review required</b></summary>

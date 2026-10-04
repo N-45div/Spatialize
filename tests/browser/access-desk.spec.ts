@@ -56,6 +56,40 @@ test("an invalid move is rejected with useful feedback", async ({ page }) => {
   await expect(desk.getByRole("button", { name: "Submit for review", exact: true })).toHaveCount(0);
 });
 
+test("the evidence agent answers after the computed verdict and shows its Knowledge Base reads", async ({ page }) => {
+  // The real API computes the verdict; only the paid provider's fields are stubbed.
+  await page.route("**/api/runs/*/access", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...await response.json(), agentConfigured: true } });
+  });
+  await page.route("**/api/runs/*/access/check", async route => {
+    const request = route.request().postDataJSON() as { useAgent: boolean; question: string };
+    const response = await route.fetch();
+    if (!request.useAgent) return route.fulfill({ response });
+    await new Promise(resolve => setTimeout(resolve, 600));
+    await route.fulfill({ response, json: { ...await response.json(), agentStatus: "connected", agentMessage: null,
+      agentSummary: `Answering "${request.question}": the venue guide and a disputed visitor report disagree.`,
+      contextReads: [
+        { tool: "initial_context", arguments: "{}", output: "Outline: disputed_reports, venue_guide", successful: true },
+        { tool: "knowledge_base_read", arguments: "{\"paths\":[\"disputed_reports\"]}", output: "Both claims, side by side", successful: true }
+      ] } });
+  });
+  await page.reload();
+  const desk = page.getByRole("region", { name: "Access desk", exact: true });
+  await expect(desk.getByRole("checkbox", { name: "Ask" })).toBeChecked();
+  await desk.getByRole("combobox", { name: "Destination", exact: true }).selectOption("quiet-mark");
+  await desk.getByLabel("Your question").fill("Is the quiet room step-free?");
+  await desk.getByRole("button", { name: "Check access", exact: true }).click();
+  await expect(desk.locator(".verdict-line strong")).toHaveText("BLOCKED");
+  await expect(desk.getByRole("status").filter({ hasText: "reading the Knowledge Base" })).toBeVisible();
+  await expect(desk.locator(".agent-research").filter({ hasText: "What the sources say" }))
+    .toContainText("Answering \"Is the quiet room step-free?\"");
+  await expect(desk.getByText(/1 Knowledge Base read ·/)).toBeVisible();
+  await expect(desk.locator(".verdict-line strong")).toHaveText("BLOCKED");
+  await desk.getByText("Context retrieval record (2 calls)").click();
+  await expect(desk.getByText("knowledge_base_read · retrieved")).toBeVisible();
+});
+
 test("access desk remains usable on a phone-sized screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const desk = page.getByRole("region", { name: "Access desk", exact: true });
