@@ -87,7 +87,8 @@
 .access-studio .access-source strong { font-size: 13px; }
 .access-studio .access-source small, .access-studio .access-reviews small { color: #536c5a; font-size: 10px; }
 .access-studio .access-source a { color: #14583b; font-size: 12px; }
-.access-studio .claim-line { font-size: 12px; }
+.access-studio .claim-line { font-size: 12px; color: #2f4a39; }
+.access-studio .claim-line b { color: #8a4b12; font-weight: 600; }
 .access-studio .move-desk { border: 1px solid #cfdbcc; padding: 6px 12px; border-radius: 9px; background: #f7f8f1; }
 .access-studio .move-desk > summary { display: flex; align-items: center; gap: 8px; list-style: none; }
 .access-studio .move-desk > summary::-webkit-details-marker { display: none; }
