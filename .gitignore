@@ -26,3 +26,4 @@ sanity/dist/
 sanity/.sanity/
 test-results/
 playwright-report/
+backend/.local-data-live/

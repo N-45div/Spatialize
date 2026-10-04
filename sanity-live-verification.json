@@ -2,13 +2,29 @@
   "projectId": "tubqyqod",
   "dataset": "production",
   "contentMode": "sanity",
-  "seedDocuments": 26,
-  "runId": "run_demo_f1819d3c",
+  "runId": "run_demo_913537da",
   "verdicts": {
     "studio-mark:800": "CLEAR",
     "studio-mark:1300": "BLOCKED",
     "gallery-mark:800": "BLOCKED"
   },
+  "previewImpact": [
+    {
+      "destination": "Gallery one",
+      "before": "BLOCKED",
+      "after": "CLEAR"
+    },
+    {
+      "destination": "Learning studio",
+      "before": "CLEAR",
+      "after": "CLEAR"
+    },
+    {
+      "destination": "Quiet room",
+      "before": "BLOCKED",
+      "after": "UNKNOWN"
+    }
+  ],
   "previewPublished": false,
   "persisted": {
     "accessVersion": 2,
@@ -19,5 +35,20 @@
     "reviews": 1
   },
   "quietRoomVerdict": "UNKNOWN",
-  "contextConfigured": false
+  "contextEndpoint": "https://api.sanity.io/v1/context/organizations/ottnv0qew/mcp/spatialize-access-evidence",
+  "agentModel": "gpt-5.6-luna",
+  "agentStatus": "connected",
+  "contextCalls": [
+    {
+      "tool": "initial_context",
+      "arguments": "{}",
+      "successful": true
+    },
+    {
+      "tool": "knowledge_base_read",
+      "arguments": "{\"knowledgeBase\":\"kbecyKU3h9k8\",\"paths\":[\"disputed_reports\",\"doorway_access\",\"venue_guide\",\"visitor_reports\"]}",
+      "successful": true
+    }
+  ],
+  "agentSummary": "The quiet room\u2019s step-free status is UNKNOWN, not confirmed.\n\nEvidence disagrees:\n- Harbor Arts access guide, observed 2026-09-18: states the quiet-room doorway is step-free; marked verified by the venue.\n- Visitor report: quiet-room threshold, observed 2026-10-02: reports a raised threshold or access barrier; marked disputed. No follow-up measurement exists.\n- Geometry snapshot v1, observed 2026-07-29: validates the stored route graph only and does not verify physical measurements.\n\nThe stored route also has unconfirmed doorway width and connectivity. Therefore, the verdict screens this stored route, not universal accessibility. Harbor Arts is a fictional demo venue; these are synthetic fixtures, not real observations."
 }
