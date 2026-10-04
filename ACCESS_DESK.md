@@ -23,8 +23,9 @@ Local storage needs one API worker. Local fixtures require no model or Sanity ke
 The redesigned studio puts the live model beside the access workflow. Open
 **Evidence** for citations, **Rehearse an obstacle move** for previews and review,
 **Source & venue tools** for upload and voice, and **Scene & extraction details**
-for the original geometry review queue. **Source research (optional)** contains
-the live-agent switch once Sanity is configured. The route caption shows
+for the original geometry review queue. The **Evidence agent** block sends your
+question to an agent that reads the venue's Sanity Context Knowledge Base; it is
+on whenever the server has a Context endpoint. The route caption shows
 **Not checked** until an access check returns a verdict.
 
 1. Check Learning studio at 800 mm: **CLEAR** for the stored route checks.
@@ -38,6 +39,11 @@ the live-agent switch once Sanity is configured. The route caption shows
 6. Check Quiet room: **UNKNOWN**. The doorway evidence is uncertain and the
    venue guide disagrees with the disputed visitor report. Both remain visible.
 7. Preview X=7.1, Z=2.7: the footprint does not fit the room and is rejected.
+8. With the Evidence agent on, ask "Is the quiet room step-free?" and check the
+   Quiet room. The computed verdict appears first. The agent then reads the
+   Knowledge Base and sets the venue guide and the disputed visitor report side
+   by side; it cannot change the verdict. **Context retrieval record** lists each
+   MCP call with its arguments and what it returned.
 
 Harbor Arts and all seeded reports, notices, and obstacles are fictional fixtures.
 The sidebar labels this even when these documents are hosted in Sanity.
@@ -73,10 +79,43 @@ Sanity, and quiet-room UNKNOWN with conflicting sources. See
 `sanity-live-verification.json`. A diagnostic run and its explicitly synthetic
 review source remain in the dataset as verification evidence.
 
-**Context is a separate setup:** Content Lake is connected, but the Context
-endpoint and organization token are not configured yet. Do not reuse the project API token as a Context token.
+## Sanity Context Knowledge Base
 
-## Configure another project or finish Context
+The evidence agent reads the Knowledge Base **Spatialize - Harbor Arts access
+evidence** (`kbecyKU3h9k8`, organization `ottnv0qew`) through the Knowledge Base
+MCP endpoint `spatialize-access-evidence`.
+
+- **Built from structured content, not pages.** [`sanity/knowledge-base.groq`](sanity/knowledge-base.groq)
+  selects the venue's `accessSource` documents and joins onto each one the
+  claims, dated notices and obstacles that cite it, with their review status.
+  An index of the source text alone would not know that the threshold report is
+  *disputed* or that a closure *ended* on 21 September. The projection carries both.
+- **Visitor text stays out.** Review records written through the public app
+  (`review-*` sources) are excluded, so nothing a visitor types reaches the agent.
+- **Context found the conflict on its own.** The first build filed a critical
+  conflict: the venue guide says the quiet-room doorway is step-free, while the
+  visitor report says it has a raised threshold. Spatialize keeps that dispute
+  open, so no side was chosen. Instead the Knowledge Base carries a standing
+  instruction to show both claims with their source, date and status and never
+  settle them, and the conflict was dismissed under that instruction. The
+  deterministic check reaches the same place from the structured claims: UNKNOWN.
+- The build produced seven entries: access barriers, disputed reports, doorway
+  access, facilities notices, review status, venue guide and visitor reports.
+
+Knowledge Bases belong to the organization, so they are managed with a Sanity
+user session (`npx sanity login` in `sanity/`), not the project token:
+
+```powershell
+python scripts/context-knowledge-base.py --knowledge-base <uuid>   # rebuild after editing sources
+python scripts/context-knowledge-base.py --organization <org-id>  # create, import and build a new one
+```
+
+For a new Knowledge Base, create an MCP in the Context app whose **only** source
+is that Knowledge Base. A dataset source switches the endpoint to GROQ mode and
+the Knowledge Base is ignored. Then create an organization API token with
+**Context: Viewer** access. Project tokens are rejected by Context endpoints.
+
+## Configure another project
 
 1. Create a project and dataset. Copy `.env.example` to `.env` and set
    `SANITY_PROJECT_ID`, `SANITY_DATASET`, and a server-only project read/write
@@ -87,28 +126,22 @@ endpoint and organization token are not configured yet. Do not reuse the project
 3. Inspect `python scripts/seed-sanity.py --dry-run`. Run it with `--write` to
    create missing synthetic demo documents. Repeat runs preserve human edits.
 4. Deploy the schema with `npm run schema:deploy` from `sanity/`.
-5. Enable Context and Knowledge Bases in your Sanity organization's Labs.
-   Build a Knowledge Base from this venue's `accessSource` documents. Suggested
-   purpose: "Explain Harbor Arts access evidence, preserving unresolved
-   visitor/venue disagreements and distinguishing synthetic examples from observations."
-   Dataset source: project `tubqyqod`, dataset `production`, filter
-   `_type == "accessSource" && venue._ref == "harbor-arts-ground"`.
-   Do not turn a disputed report into settled ground truth merely because a
-   venue reviewer declined it. Inspect the generated entries and rebuild after
-   editing sources; current notices are queried directly from Content Lake.
-6. Create a Knowledge Base Context MCP endpoint scoped to this venue. Set
-   `SANITY_CONTEXT_URL` and an organization Context Viewer token in
-   `SANITY_CONTEXT_TOKEN`. This is separate from the project write token.
-7. Set `OPENAI_API_KEY` and, if needed, `SPATIALIZE_OPENAI_AGENT_MODEL` to an
-   available model supporting Responses remote MCP. Restart the API.
-8. Enable "Research sources with the live agent" and verify actual
-   `knowledge_base_read` calls in the retrieval record. An initial-context call
-   alone is not reported as successful content retrieval.
+5. Enable Context in your organization's Labs page, then build the Knowledge
+   Base with `python scripts/context-knowledge-base.py --organization <org-id>`
+   and create its MCP endpoint and token as described above. Review any conflicts
+   it files: a disputed report must not become settled fact just because a venue
+   reviewer declined it. Current notices are always queried from Content Lake.
+6. Set `SANITY_CONTEXT_URL` to the endpoint URL the Context app shows, and the
+   organization token in `SANITY_CONTEXT_TOKEN`. It is separate from the project
+   write token.
+7. Set `OPENAI_API_KEY` and, if needed, `SPATIALIZE_OPENAI_AGENT_MODEL` to a
+   model that supports Responses remote MCP. Restart the API.
+8. Ask the Evidence agent a question and open the retrieval record. It must show
+   a successful `knowledge_base_read`; an `initial_context` call alone is not
+   reported as retrieval.
 
-The project ID is exposed for submission inspection, never the tokens. A
-configured Sanity failure returns an error; it does not substitute local fixtures.
-Live account access, tokens, and Knowledge Base indexing are **not verified**
-until a real project is connected. Fixture mode alone is not a Path One entry.
+The project ID is public; tokens never leave the server. A configured Sanity
+failure returns an error. It never substitutes local fixtures.
 
 ## Architecture and boundaries
 
@@ -156,7 +189,16 @@ uv run --project backend --extra dev pytest backend/tests -q
 ```
 
 Browser tests start isolated local servers, disable external providers, and cover
-clearance, conflict evidence, preview/approval/persistence, and invalid placement.
+clearance, conflict evidence, preview/approval/persistence, invalid placement, and
+the evidence agent's answer and retrieval record (provider fields stubbed).
 If using an existing Python environment, set `SPATIALIZE_TEST_PYTHON` for browser
 tests. Chrome is required. `npm run evals` retains the optional paid model
 evaluation; ordinary `npm test` excludes that network test.
+
+## Credits
+
+The access desk is new work on top of Spatialize: floor-plan extraction, the 3D
+twin, the WebMCP tools and the geometry review queue already existed (see
+[Prior work vs. new work](README.md#prior-work-vs-new-work)). Alza's obstruction
+checking and ArchMorph's synchronized human/agent model inspired parts of the
+design; no code from either project was used.

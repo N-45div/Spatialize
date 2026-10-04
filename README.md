@@ -1,10 +1,16 @@
 # Spatialize
 
-**New: Access Desk** — sourced access claims, dated notices, personalized corridor
-checks, and obstacle moves previewed before human approval. Start with
-`npm run dev:access`; see [ACCESS_DESK.md](ACCESS_DESK.md) for setup, the demo,
-Sanity schemas, and verification. Sanity is optional for local fixture mode;
-the live Context agent requires account configuration.
+**New for the [DEV Sanity Challenge](https://dev.to/challenges/sanity-2026-09-16): the Access Desk.**
+Access evidence (sourced claims with a review status, dated closures, obstacles)
+lives in Sanity: project `tubqyqod`, public dataset `production`, hosted Studio at
+https://spatialize-tubqyqod.sanity.studio/. A deterministic check screens your
+route at your clear width from that structured evidence. An evidence agent reads
+a **Sanity Context Knowledge Base** built from the same documents and explains the
+sources, disagreements included, but it can never overrule the computed verdict.
+Obstacle moves are previewed and wait for a person's approval. Start with
+`npm run dev:access`; [ACCESS_DESK.md](ACCESS_DESK.md) covers the demo, the
+schema, the Knowledge Base and verification. Without Sanity it runs on labelled
+local fixtures.
 
 **A building that answers your agent from geometry — and refuses it when it's wrong.**
 
@@ -159,6 +165,12 @@ everything after that commit: the entire WebMCP surface (`src/webmcp/`), the
 server-side review ledger, the OpenAI voice stack, and the 121 tests added
 with them. The commit-by-commit boundary is documented in
 [WEBMCP.md](WEBMCP.md#prior-work-vs-work-added-during-the-submission-period).
+
+For the **DEV Sanity Challenge** (18 September to 4 October 2026), everything
+above is prior work: the last commit before it is `1c62fd5`, 4 September 2026.
+The new work is the Access Desk, every commit after `1c62fd5`: the Sanity
+schema and Studio, the evidence model and corridor check, reviewed obstacle
+moves, and the Context Knowledge Base agent.
 
 ## Speak instead of type — the same rules apply
 
