@@ -1204,3 +1204,60 @@ h1 { margin: 13px 0 9px; max-width: 245px; font-size: 26px; line-height: 1.12; l
 .route-words-note { margin: 8px 0 0; font-size: 9px; color: #e0a79d; }
 
 .catalog-group { padding: 8px 2px 2px !important; border: 0 !important; font: 7px "DM Mono"; text-transform: uppercase; letter-spacing: .12em; color: #6e8179; }
+
+/* Evidence-backed venue access desk */
+.access-desk { margin: 22px 0 28px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.access-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.access-heading .section-label { margin: 0; }
+.access-heading h2 { font-size: 23px; letter-spacing: -.7px; margin: 6px 0; }
+.access-mode { border: 1px solid #426653; border-radius: 20px; padding: 5px 8px; color: var(--mint); font-size: 9px; white-space: nowrap; }
+.access-intro { color: #b5c7bc; font-size: 12px; margin: 6px 0 14px; }
+.fixture-note { border-left: 2px solid var(--amber); padding: 7px 10px; color: #c6bda6; font-size: 10px; line-height: 1.6; background: #211e142e; }
+.access-desk label { display: block; font-size: 11px; color: #b7c8be; margin: 12px 0 6px; }
+.access-desk label > span { float: right; color: var(--muted); }
+.access-desk input:not([type=checkbox]), .access-desk select, .access-desk textarea { display: block; width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #344a3e; border-radius: 6px; background: #0b1712; color: var(--ink); font: inherit; font-size: 12px; }
+.access-desk textarea { resize: vertical; min-height: 68px; }
+.access-desk :is(input,select,textarea):focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.access-toggle { display: flex !important; align-items: center; gap: 8px; line-height: 1.5; }
+.access-toggle input { accent-color: var(--mint); }
+.access-muted { display: block; color: #99aaa0; font-size: 10px; line-height: 1.6; }
+.access-primary, .access-secondary { display: flex; justify-content: space-between; width: 100%; border-radius: 6px; padding: 11px; cursor: pointer; font-size: 12px; margin-top: 12px; }
+.access-primary { color: #10241a; background: var(--mint); border: 1px solid var(--mint); font-weight: 700; }
+.access-secondary { background: #16251d; border: 1px solid #395141; }
+.access-desk button:disabled { opacity: .45; cursor: not-allowed; }
+.access-answer { margin-top: 16px; padding: 12px; background: #15251c; border: 1px solid #436c50; border-radius: 8px; }
+.access-answer.blocked { border-color: #a35e41; background: #251b15; }
+.access-answer.unknown { border-color: #8b7441; background: #242115; }
+.verdict-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.verdict-line strong { color: var(--mint); font: 600 16px 'DM Mono', monospace; }
+.blocked .verdict-line strong { color: #f3a17e; }
+.unknown .verdict-line strong { color: var(--amber); }
+.verdict-line span, .access-answer > small { font-size: 9px; color: #b7bfb2; }
+.access-answer p { font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.access-answer ul { margin: 12px 0; padding: 0; list-style: none; }
+.access-answer li { border-top: 1px solid #ffffff15; }
+.access-answer li button { display: block; text-align: left; width: 100%; padding: 9px 0; border: 0; background: none; font-size: 11px; line-height: 1.6; cursor: pointer; }
+.access-answer li button span { display: block; color: var(--mint); font-size: 9px; }
+.access-desk details { margin-top: 13px; }
+.access-desk summary { cursor: pointer; font-size: 11px; font-weight: 600; line-height: 1.6; }
+.access-source { background: #08140c77; border: 1px solid #ffffff18; padding: 10px; margin-top: 8px; border-radius: 5px; }
+.access-source strong, .access-reviews strong { display: block; font-size: 11px; line-height: 1.6; }
+.access-source small, .access-reviews small { display: block; color: #a9b9ae; font-size: 9px; line-height: 1.6; margin-top: 4px; }
+.access-source a { color: var(--mint); font-size: 10px; }
+.claim-line { font-size: 10px; margin: 6px 0; color: #c6d8c8; }
+.claim-line b { font-weight: 400; color: var(--amber); }
+.access-desk pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; font-size: 10px; }
+.move-desk { padding-top: 14px; border-top: 1px solid var(--line); }
+.move-desk > p { color: #aebfb4; font-size: 11px; line-height: 1.6; }
+.coordinate-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.move-preview { padding: 11px; background: #172c2088; border: 1px dashed #609973; margin-top: 12px; border-radius: 5px; }
+.move-preview strong { font-size: 11px; }
+.move-preview p { font-size: 10px; display: flex; justify-content: space-between; gap: 7px; }
+.access-reviews { margin-top: 15px; }
+.access-reviews h3 { font-size: 12px; }
+.access-reviews article { border-top: 1px solid var(--line); padding: 12px 0; }
+.access-reviews p { font-size: 10px; line-height: 1.6; color: #b7c8bd; }
+.decision-buttons { display: flex; gap: 8px; margin-top: 8px; }
+.decision-buttons button, .access-error button { border: 1px solid #486451; border-radius: 4px; background: #1d3024; padding: 7px 9px; font-size: 10px; cursor: pointer; }
+.access-error { color: #ffc4ac; font-size: 11px; line-height: 1.6; border-left: 2px solid #e69372; padding: 10px; background: #321d16; margin-top: 14px; }
+.access-error button { display: block; margin-top: 8px; }

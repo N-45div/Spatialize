@@ -48,6 +48,12 @@ class Settings(BaseSettings):
         None, validation_alias=AliasChoices("SPATIALIZE_VENUE_TOKEN", "venue_token")
     )
 
+    sanity_project_id: str | None = Field(None, validation_alias="SANITY_PROJECT_ID")
+    sanity_dataset: str = Field("production", validation_alias="SANITY_DATASET")
+    sanity_api_token: str | None = Field(None, validation_alias="SANITY_API_TOKEN")
+    sanity_context_url: str | None = Field(None, validation_alias="SANITY_CONTEXT_URL")
+    sanity_context_token: str | None = Field(None, validation_alias="SANITY_CONTEXT_TOKEN")
+
     # OpenAI, when present, takes the whole voice path: agent, speech-to-text
     # and narration. The other providers stay as fallbacks when it is absent.
     openai_api_key: str | None = Field(None, validation_alias="OPENAI_API_KEY")

@@ -1,0 +1,92 @@
+{
+  "venueId": "harbor-arts-ground",
+  "version": 1,
+  "sources": [
+    {
+      "id": "source-venue",
+      "title": "Harbor Arts access guide",
+      "publisher": "Demo venue",
+      "observedAt": "2026-09-18T10:00:00Z",
+      "synthetic": true,
+      "body": "Synthetic fixture. The venue guide states that the quiet room is step-free. Studio access is step-free. This is not a real venue observation."
+    },
+    {
+      "id": "source-visitor",
+      "title": "Visitor report: quiet-room threshold",
+      "publisher": "Demo visitor",
+      "observedAt": "2026-10-02T10:00:00Z",
+      "synthetic": true,
+      "body": "Synthetic fixture. A visitor reports a raised threshold at door-corridor-quiet. The venue has disputed the report; no follow-up measurement exists."
+    },
+    {
+      "id": "source-layout",
+      "title": "Gallery trolley layout observation",
+      "publisher": "Demo facilities team",
+      "observedAt": "2026-10-03T06:00:00Z",
+      "synthetic": true,
+      "body": "Synthetic fixture. A 0.8 by 0.8 metre trolley stands at (8.0, 2.7) metres in the gallery, intersecting the stored entrance route. Moving it to (13.5, 5.3) is a proposed alternative, not a published change."
+    },
+    {
+      "id": "source-expired",
+      "title": "Completed gallery maintenance",
+      "publisher": "Demo facilities team",
+      "observedAt": "2026-09-20T06:00:00Z",
+      "synthetic": true,
+      "body": "Synthetic fixture. Gallery doorway maintenance ended on September 21. This notice must not block later access checks."
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim-guide",
+      "entityId": "door-corridor-quiet",
+      "property": "step-free",
+      "value": true,
+      "sourceId": "source-venue",
+      "status": "verified"
+    },
+    {
+      "id": "claim-report",
+      "entityId": "door-corridor-quiet",
+      "property": "step-free",
+      "value": false,
+      "sourceId": "source-visitor",
+      "status": "disputed"
+    },
+    {
+      "id": "claim-studio",
+      "entityId": "door-lobby-studio",
+      "property": "step-free",
+      "value": true,
+      "sourceId": "source-venue",
+      "status": "verified"
+    }
+  ],
+  "notices": [
+    {
+      "id": "notice-expired",
+      "entityId": "door-lobby-gallery",
+      "title": "Gallery maintenance closure",
+      "startsAt": "2026-09-20T06:00:00Z",
+      "endsAt": "2026-09-21T06:00:00Z",
+      "sourceId": "source-expired",
+      "status": "verified"
+    }
+  ],
+  "obstacles": [
+    {
+      "id": "gallery-trolley",
+      "label": "Gallery trolley",
+      "roomId": "gallery",
+      "position": [
+        8.0,
+        2.7
+      ],
+      "width": 0.8,
+      "depth": 0.8,
+      "rotation": 0,
+      "sourceId": "source-layout",
+      "verified": true
+    }
+  ],
+  "proposals": []
+}

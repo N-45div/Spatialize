@@ -26,6 +26,10 @@ from .models import RunRecord
 from .review import AuditRequest, ProposalConflict, ProposalRequest, ReviewService
 from .storage import ObjectStore, build_object_store
 from .workflow import RunService, SceneRejected, UploadRejected
+from .access import AccessDesk
+from .access_agent import enrich_answer
+from .access_models import AccessQuestion, DecisionRequest, ObstacleMove
+from .access_repository import AccessConflict, AccessRepository, ContentUnavailable
 
 JSON_TYPE = "application/json"
 
@@ -82,6 +86,7 @@ def create_app(
         active_settings.max_upload_bytes,
     )
     review = ReviewService(service)
+    access = AccessDesk(service, AccessRepository(active_settings, active_store), run_lock=review._lock)
     sink = build_genblaze_sink(active_settings)
     # STT runs sink-less: transcript text assets aren't transferable objects;
     # the app persists sources and transcripts to B2 through its own store.
@@ -185,6 +190,61 @@ def create_app(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the venue team can decide a proposal",
             )
+
+    def access_error(error: Exception):
+        if isinstance(error, ContentUnavailable):
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        if isinstance(error, AccessConflict):
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if isinstance(error, KeyError):
+            raise HTTPException(status_code=404, detail="Access proposal not found") from error
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.get("/api/runs/{run_id}/access")
+    def access_snapshot(run_id: str):
+        try:
+            snapshot = access.snapshot(load_run(run_id))
+            snapshot["agentConfigured"] = bool(active_settings.sanity_context_url
+                and active_settings.sanity_context_token and active_settings.openai_api_key)
+            snapshot["projectId"] = active_settings.sanity_project_id
+            return snapshot
+        except (ContentUnavailable, AccessConflict, ValueError, KeyError) as error:
+            access_error(error)
+
+    @app.post("/api/runs/{run_id}/access/check")
+    def access_check(run_id: str, question: AccessQuestion):
+        try:
+            result = access.check(load_run(run_id), question)
+            if question.use_agent:
+                result.update(enrich_answer(active_settings, question, result))
+            else:
+                result.update({"agentStatus": "not-requested", "agentSummary": None, "contextReads": []})
+            return result
+        except (ContentUnavailable, AccessConflict, ValueError, KeyError) as error:
+            access_error(error)
+
+    @app.post("/api/runs/{run_id}/access/preview")
+    def access_preview(run_id: str, move: ObstacleMove):
+        try:
+            return access.preview(load_run(run_id), move)
+        except (ContentUnavailable, AccessConflict, ValueError, KeyError) as error:
+            access_error(error)
+
+    @app.post("/api/runs/{run_id}/access/proposals", status_code=201)
+    def access_propose(run_id: str, move: ObstacleMove):
+        try:
+            return access.propose(load_run(run_id), move)
+        except (ContentUnavailable, AccessConflict, ValueError, KeyError) as error:
+            access_error(error)
+
+    @app.post("/api/runs/{run_id}/access/proposals/{proposal_id}/decision")
+    def access_decide(run_id: str, proposal_id: str, decision: DecisionRequest,
+                      x_venue_token: Annotated[str | None, Header()] = None):
+        require_venue(x_venue_token)
+        try:
+            return access.decide(load_run(run_id), proposal_id, decision)
+        except (ContentUnavailable, AccessConflict, ValueError, KeyError) as error:
+            access_error(error)
 
     @app.get("/api/runs/{run_id}/review")
     def get_review(run_id: str) -> Response:

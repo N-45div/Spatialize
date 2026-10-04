@@ -1,13 +1,17 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Point, SpatialScene } from "../domain/spatial-scene";
+import type { Obstacle } from "../lib/access-api";
+
+const NO_OBSTACLES: Obstacle[] = [];
 
 const roomColors = {
-  public: 0xd8e6c3,
-  service: 0x6d7b74,
-  circulation: 0xa8c7be,
-  restricted: 0x695f59
+  public: 0xf0ebdf,
+  service: 0x9faea1,
+  circulation: 0xd4e0d5,
+  restricted: 0xb8aea3
 };
 
 function polygonShape(points: Point[]) {
@@ -33,12 +37,16 @@ export function SpatialCanvas({
   scene,
   route,
   selectedId,
-  mode
+  mode,
+  obstacles = NO_OBSTACLES,
+  previewObstacles = NO_OBSTACLES
 }: {
   scene: SpatialScene;
   route: Point[];
   selectedId: string;
   mode: "3d" | "2d";
+  obstacles?: Obstacle[];
+  previewObstacles?: Obstacle[];
 }) {
   const host = useRef<HTMLDivElement>(null);
 
@@ -46,12 +54,12 @@ export function SpatialCanvas({
     if (!host.current) return;
     const container = host.current;
     const world = new THREE.Scene();
-    world.background = new THREE.Color(0x08110f);
-    world.fog = new THREE.FogExp2(0x08110f, 0.027);
+    world.background = new THREE.Color(0xf2f0e9);
+    world.fog = new THREE.FogExp2(0xf2f0e9, 0.009);
 
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    if (mode === "2d") camera.position.set(7.5, 29, 6.5);
-    else camera.position.set(18, 20, 22);
+    const camera = mode === "2d" ? new THREE.OrthographicCamera(-10, 10, 8, -8, 0.1, 100) : new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+    if (mode === "2d") { camera.up.set(0, 0, -1); camera.position.set(7.5, 29, 6.5); }
+    else camera.position.set(15.5, 16, 19.5);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -62,13 +70,26 @@ export function SpatialCanvas({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
+    const labels = new CSS2DRenderer();
+    labels.domElement.className = "scene-label-layer";
+    container.appendChild(labels.domElement);
+    scene.rooms.forEach(room => {
+      const element = document.createElement("span");
+      element.className = "scene-room-label";
+      element.textContent = room.label;
+      const label = new CSS2DObject(element);
+      const centre = room.polygon.reduce(([x, z], point) => [x + point[0], z + point[1]], [0, 0]);
+      label.position.set(centre[0] / room.polygon.length, 0.3, centre[1] / room.polygon.length);
+      world.add(label);
+    });
+
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(7.5, 0, 6.5);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2.05;
     controls.enableRotate = mode === "3d";
 
-    world.add(new THREE.HemisphereLight(0xdfffea, 0x101511, 2.4));
+    world.add(new THREE.HemisphereLight(0xdfffea, 0x829185, 2.4));
     const sun = new THREE.DirectionalLight(0xfff3cf, 3.6);
     sun.position.set(-8, 18, 10);
     sun.castShadow = true;
@@ -76,7 +97,7 @@ export function SpatialCanvas({
 
     const plinth = new THREE.Mesh(
       new THREE.BoxGeometry(17.4, 0.4, 15.4),
-      new THREE.MeshStandardMaterial({ color: 0x15231f, roughness: 0.72, metalness: 0.08 })
+      new THREE.MeshStandardMaterial({ color: 0xd7ddd2, roughness: 0.72, metalness: 0.08 })
     );
     plinth.position.set(7.5, -0.25, 6.5);
     plinth.receiveShadow = true;
@@ -136,7 +157,7 @@ export function SpatialCanvas({
           const midpoint = (segment.start + segment.end) / 2;
           const wall = new THREE.Mesh(
             new THREE.BoxGeometry(segmentLength, 0.7, 0.09),
-            new THREE.MeshStandardMaterial({ color: 0xe6eadf, roughness: 0.6 })
+            new THREE.MeshStandardMaterial({ color: 0x9eafa0, roughness: 0.6 })
           );
           wall.position.set(ax + (bx - ax) * midpoint, 0.45, az + (bz - az) * midpoint);
           wall.rotation.y = -Math.atan2(bz - az, bx - ax);
@@ -161,7 +182,44 @@ export function SpatialCanvas({
       threshold.position.set(door.position[0], blocked ? 0.58 : 0.34, door.position[1]);
       threshold.rotation.y = -door.rotation;
       world.add(threshold);
+      if (door.id === selectedId) {
+        const highlight = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.72, 32),
+          new THREE.MeshBasicMaterial({ color: 0xffcc62, side: THREE.DoubleSide }));
+        highlight.rotation.x = -Math.PI / 2;
+        highlight.position.set(door.position[0], 0.6, door.position[1]);
+        world.add(highlight);
+      }
     });
+
+    function drawObstacle(obstacle: Obstacle, preview: boolean) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(obstacle.width, mode === "2d" ? 0.12 : 0.9, obstacle.depth),
+        new THREE.MeshStandardMaterial({ color: preview ? 0x8de6c1 : 0xe89361,
+          transparent: preview, opacity: preview ? 0.5 : 1,
+          emissive: obstacle.id === selectedId ? 0x593c0a : 0x000000 }));
+      mesh.position.set(obstacle.position[0], mode === "2d" ? 0.4 : 0.75, obstacle.position[1]);
+      mesh.rotation.y = -obstacle.rotation;
+      mesh.castShadow = true;
+      world.add(mesh);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),
+        new THREE.LineBasicMaterial({ color: preview ? 0x8de6c1 : 0xffcb68 }));
+      edges.position.copy(mesh.position);
+      edges.rotation.copy(mesh.rotation);
+      world.add(edges);
+    }
+    obstacles.forEach(obstacle => drawObstacle(obstacle, false));
+    previewObstacles.filter(candidate => {
+      const current = obstacles.find(o => o.id === candidate.id);
+      return !current || current.position[0] !== candidate.position[0] || current.position[1] !== candidate.position[1]
+        || current.rotation !== candidate.rotation;
+    }).forEach(obstacle => drawObstacle(obstacle, true));
+
+    const focusedRoom = scene.rooms.find(room => room.id === selectedId);
+    if (focusedRoom) {
+      const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+        focusedRoom.polygon.map(([x, z]) => new THREE.Vector3(x, 0.55, z))),
+        new THREE.LineBasicMaterial({ color: 0xffcc62 }));
+      world.add(line);
+    }
 
     const markerGroup = new THREE.Group();
     world.add(markerGroup);
@@ -175,7 +233,7 @@ export function SpatialCanvas({
         new THREE.MeshStandardMaterial({
           color: isSelected ? 0xffcc62 : landmark.type === "entrance" ? 0xffce6a : 0x8de6c1,
           emissive: landmark.type === "entrance" ? 0x4a2e00 : 0x0d4b37,
-          emissiveIntensity: isSelected ? 1.2 : 0.45
+          emissiveIntensity: isSelected ? 0.35 : 0.15
         })
       );
       marker.position.set(x, 0.65, z);
@@ -197,18 +255,19 @@ export function SpatialCanvas({
     });
 
     if (route.length > 1) {
-      const curve = new THREE.CatmullRomCurve3(
-        route.map(([x, z]) => new THREE.Vector3(x, 0.48, z)),
-        false,
-        "catmullrom",
-        0.08
-      );
+      // Draw the same straight segments the corridor checker evaluates.
+      // A smoothed spline can cut corners across walls or obstacles.
+      const curve = new THREE.CurvePath<THREE.Vector3>();
+      route.slice(1).forEach(([x, z], index) => {
+        const [previousX, previousZ] = route[index];
+        curve.add(new THREE.LineCurve3(new THREE.Vector3(previousX, 0.48, previousZ), new THREE.Vector3(x, 0.48, z)));
+      });
       const path = new THREE.Mesh(
         new THREE.TubeGeometry(curve, Math.max(16, route.length * 8), 0.1, 12, false),
         new THREE.MeshStandardMaterial({
           color: 0xffc95c,
           emissive: 0xff9f1c,
-          emissiveIntensity: 0.85
+          emissiveIntensity: 0.2
         })
       );
       world.add(path);
@@ -224,20 +283,27 @@ export function SpatialCanvas({
       });
     }
 
-    const grid = new THREE.GridHelper(40, 40, 0x355449, 0x172923);
+    const grid = new THREE.GridHelper(40, 40, 0xd1d8cd, 0xe1e4db);
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
     gridMaterials.forEach((material) => {
       material.transparent = true;
       material.opacity = 0.34;
     });
-    grid.position.y = -0.05;
+    grid.position.y = -0.48;
     world.add(grid);
 
     const resize = () => {
       const width = container.clientWidth;
       const height = container.clientHeight;
       renderer.setSize(width, height);
-      camera.aspect = width / Math.max(height, 1);
+      labels.setSize(width, height);
+      const aspect = width / Math.max(height, 1);
+      if (camera instanceof THREE.PerspectiveCamera) camera.aspect = aspect;
+      else {
+        const halfHeight = Math.max(8, 9 / aspect);
+        camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect;
+        camera.top = halfHeight; camera.bottom = -halfHeight;
+      }
       camera.updateProjectionMatrix();
     };
     const observer = new ResizeObserver(resize);
@@ -263,6 +329,7 @@ export function SpatialCanvas({
       });
       controls.update();
       renderer.render(world, camera);
+      labels.render(world, camera);
       frame = requestAnimationFrame(animate);
     };
     animate();
@@ -273,6 +340,7 @@ export function SpatialCanvas({
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
+      labels.domElement.remove();
       world.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           object.geometry.dispose();
@@ -281,7 +349,7 @@ export function SpatialCanvas({
         }
       });
     };
-  }, [scene, route, selectedId, mode]);
+  }, [scene, route, selectedId, mode, obstacles, previewObstacles]);
 
   return <div className="spatial-canvas" ref={host} aria-label="Interactive 3D venue map" />;
 }

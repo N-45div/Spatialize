@@ -3,6 +3,7 @@ dist
 .venv
 backend/.venv
 backend/.local-data
+backend/.local-data-e2e/
 backend/.models
 __pycache__/
 .pytest_cache/
@@ -20,3 +21,9 @@ spatialize-demo*.mp4
 .vercel
 .env*
 !.env.example
+sanity/node_modules/
+sanity/dist/
+sanity/.sanity/
+test-results/
+playwright-report/
+backend/.local-data-live/

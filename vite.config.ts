@@ -7,7 +7,7 @@ export default defineConfig({
     port: 4173,
     host: "0.0.0.0",
     proxy: {
-      "/api": "http://127.0.0.1:8787"
+      "/api": process.env.SPATIALIZE_DEV_API_URL || "http://127.0.0.1:8787"
     }
   }
 });

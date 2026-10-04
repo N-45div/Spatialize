@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CubeIcon, FileTextIcon, ShieldCheckIcon, ExportIcon, BuildingsIcon, MouseIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Landing } from "./components/Landing";
 import { SpatialCanvas } from "./components/SpatialCanvas";
+import { AccessDesk, type AccessVisual } from "./components/AccessDesk";
 import { Tour } from "./components/Tour";
 import { sampleScene } from "./data/sample-scene";
 import { SpatialSceneSchema, type SpatialScene } from "./domain/spatial-scene";
@@ -64,6 +66,7 @@ function parseScene(raw: unknown): SpatialScene | null {
 }
 
 export default function App() {
+  const [accessVisual, setAccessVisual] = useState<AccessVisual>({ obstacles: [], preview: [], route: null, focusedId: null });
   const [view, setView] = useState(window.location.hash === "#studio" ? "studio" : "landing");
   const [liveScene, setLiveScene] = useState<SpatialScene | null>(null);
   const scene = liveScene ?? sampleScene;
@@ -75,7 +78,7 @@ export default function App() {
   // venue swap falls back to that venue's first destination without an effect.
   // Any landmark can be focused — an agent asking about the lift must see the
   // lift — while the sidebar lists only the destination-type ones.
-  const [destinationChoice, setDestination] = useState(destinations[0]?.id ?? "");
+  const [destinationChoice, setDestination] = useState(destinations.find(item => item.id === "studio-mark")?.id ?? destinations[0]?.id ?? "");
   const destination = useMemo(
     () =>
       scene.landmarks.some((item) => item.id === destinationChoice)
@@ -84,6 +87,12 @@ export default function App() {
     [scene, destinations, destinationChoice]
   );
   const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
+  const handleAccessVisual = useCallback((visual: AccessVisual) => {
+    setAccessVisual(visual);
+    if (visual.focusedId && scene.landmarks.some(item => item.id === visual.focusedId)) {
+      setDestination(visual.focusedId);
+    }
+  }, [scene]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [sourceName, setSourceName] = useState("ground-floor-plan.pdf");
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "stored" | "error">("idle");
@@ -158,7 +167,7 @@ export default function App() {
       if (isDemo) {
         setSourceName("harbor-arts-demo.png");
         setUploadState("stored");
-        setUploadMessage("Demo venue loaded · voice is live");
+        setUploadMessage("Demo venue loaded · access desk ready");
         setDemoNotice(true);
       }
       return true;
@@ -558,25 +567,64 @@ export default function App() {
   const voiceReady = Boolean(ingestionRun && liveScene);
 
   return (
-    <main className="app-shell">
+    <main className="app-shell access-studio">
       <header className="topbar">
         <a className="brand" href="/">
-          <span className="brand-mark"><i /><i /><i /></span>
+          <CubeIcon size={32} weight="duotone" aria-hidden="true" />
           <span>Spatialize<small>Spatial media studio</small></span>
         </a>
-        <div className="topbar-copy"><span>Projects</span><b>/</b><strong>{scene.name}</strong></div>
+        <div className="topbar-copy"><span>Venue</span><b>/</b><strong>{scene.name}</strong></div>
         <div className="topbar-actions">
-          <div className="b2-state"><span /> {storageLabel} <small>{ingestionRun ? `run ${ingestionRun.runId.slice(0, 12)}` : "sample data"}</small></div>
-          <button className="share-action" onClick={downloadScene}>Share package</button>
+          <div className="b2-state"><ShieldCheckIcon size={18} aria-hidden="true" /> {storageLabel} <small>{ingestionRun ? `run ${ingestionRun.runId.slice(0, 12)}` : "sample data"}</small></div>
+          <button className="share-action" onClick={downloadScene}><ExportIcon size={18} aria-hidden="true" /> Share package</button>
         </div>
       </header>
 
       <section className="workspace">
-        <aside className="sidebar">
-          <div className="eyebrow"><span>Project 01</span><b>Scene schema v1.1</b></div>
-          <h1>{scene.name}</h1>
-          <p className="lede">A flat venue plan transformed into a navigable, accessible spatial twin.</p>
 
+
+        <section className="viewport" data-tour="viewport">
+          <SpatialCanvas scene={scene} route={accessVisual.route ?? route} selectedId={accessVisual.focusedId ?? destination} mode={viewMode}
+            obstacles={accessVisual.obstacles} previewObstacles={accessVisual.preview} />
+
+          <AgentPanel
+            scene={scene}
+            status={webmcp}
+            canPropose={canPropose}
+            onApprove={approveProposal}
+            onReject={rejectProposal}
+          />
+          <div className="viewport-head">
+            <div><span>Live spatial twin</span><h1>{scene.name.split(" \u00b7 ")[0]}</h1><p>Ground floor / {scene.rooms.length} rooms / {scene.landmarks.length} landmarks</p></div>
+            <div className="view-controls">
+              <button aria-pressed={viewMode === "3d"} className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}>3D</button>
+              <button aria-pressed={viewMode === "2d"} className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}>Plan</button>
+            </div>
+          </div>
+          <div className="scene-legend">
+            <span><i className="public-key" /> Public</span>
+            <span><i className="route-key" /> Accessible route</span>
+            <span><i className="review-key" /> Review</span>
+          </div>
+          {selected && (
+            <div className="route-caption" role="status" aria-label="Route summary">
+              <CubeIcon size={26} className="route-icon" aria-hidden="true" />
+              <div><small>Route summary / geometry rehearsal</small><strong>Main entrance → {selected.label}</strong></div>
+              <div className="route-stats">
+                <span><strong>{Math.round(routeDistance)} m</strong><small>distance</small></span>
+                <span><strong>{Math.max(1, Math.ceil(routeDistance / 1.1 / 60))} min</strong><small>walking</small></span>
+                <b className={accessVisual.verdict === "BLOCKED" ? "blocked" : ""}>
+                  {accessVisual.verdict ?? "Not checked"}
+                </b>
+              </div>
+            </div>
+          )}
+          <div className="orbit-hint"><MouseIcon size={18} aria-hidden="true" /> Drag to orbit · Scroll to zoom</div>
+        </section>
+
+        <aside className="sidebar access-sidebar">
+          <AccessDesk key={`${runId}:${sceneVersion}`} runId={runId} scene={scene} sceneVersion={sceneVersion} onVisual={handleAccessVisual} />
+          <details className="studio-disclosure" data-tour="source"><summary><FileTextIcon size={22} aria-hidden="true" /><span><strong>Source & venue tools</strong><small>Upload, voice guidance, route rehearsal</small></span></summary>
           <button
             className={`source-card ${uploadState}`}
             data-tour="source"
@@ -609,7 +657,7 @@ export default function App() {
           <div className="section-label">Ask the venue</div>
           {demoNotice && (
             <div className="demo-notice" role="status">
-              <b>Demo venue loaded — voice is live.</b>
+              <b>Demo venue loaded — ready to explore.</b>
               <span>No upload needed. Try one of these, spoken or typed:</span>
               <div className="demo-prompts">
                 <button onClick={() => setAskText("How far is the studio from the entrance?")}>
@@ -733,51 +781,9 @@ export default function App() {
           <button className="secondary-action" onClick={downloadScene}>
             Export scene package <span>JSON + assets</span>
           </button>
-        </aside>
-
-        <section className="viewport" data-tour="viewport">
-          <SpatialCanvas scene={scene} route={route} selectedId={destination} mode={viewMode} />
-          <div className="viewport-glow" />
-          <AgentPanel
-            scene={scene}
-            status={webmcp}
-            canPropose={canPropose}
-            onApprove={approveProposal}
-            onReject={rejectProposal}
-          />
-          <div className="viewport-head">
-            <div><span>Interactive spatial twin</span><strong>{liveScene ? "Extracted scene · Accessible view" : "Ground floor · Accessible view"}</strong></div>
-            <div className="view-controls">
-              <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}>3D</button>
-              <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}>Plan</button>
-            </div>
-          </div>
-          <div className="scene-legend">
-            <span><i className="public-key" /> Public</span>
-            <span><i className="route-key" /> Accessible route</span>
-            <span><i className="review-key" /> Review</span>
-          </div>
-          {selected && (
-            <div className="route-caption">
-              <span className="route-number">01</span>
-              <div><small>Active rehearsal</small><strong>Main entrance → {selected.label}</strong></div>
-              <div className="route-stats">
-                <span><strong>{Math.round(routeDistance)} m</strong><small>distance</small></span>
-                <span><strong>{Math.max(1, Math.round(routeDistance / 1.1))} min</strong><small>walking</small></span>
-                <b className={blockedBy || !route.length ? "blocked" : ""}>
-                  {blockedBy
-                    ? `Blocked at ${blockedBy}`
-                    : route.length
-                      ? "Step-free"
-                      : "No step-free route"}
-                </b>
-              </div>
-            </div>
-          )}
-          <div className="orbit-hint"><i /> Drag to orbit · Scroll to zoom</div>
-        </section>
-
-        <aside className="inspector" data-tour="inspector">
+          </details>
+          <details className="studio-disclosure"><summary><BuildingsIcon size={22} aria-hidden="true" /><span><strong>Scene & extraction details</strong><small>Confidence, review queue, provenance</small></span></summary>
+        <div className="inspector" data-tour="inspector">
           <div className="inspector-head">
             <div><span className="live-dot" /> Spatial intelligence</div>
             <span className="run-time">{extracting ? "Extracting…" : ingestionRun ? ingestionRun.status : "Demo"}</span>
@@ -823,6 +829,7 @@ export default function App() {
             <li className={ingestionRun?.status === "approved" ? "done" : ""}><span>4</span><div><strong>Publish to B2</strong><small>{ingestionRun?.status === "approved" ? "Approved" : "Awaiting approval"}</small></div></li>
           </ol>
           <div className="provenance-foot"><span>Immutable run manifest</span><strong>{ingestionRun?.runId ?? "run_demo"}</strong></div>
+        </div>          </details>
         </aside>
       </section>
       {showTour && (
