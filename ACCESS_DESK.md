@@ -197,8 +197,7 @@ evaluation; ordinary `npm test` excludes that network test.
 
 ## Credits
 
-The access desk is new work on top of Spatialize: floor-plan extraction, the 3D
-twin, the WebMCP tools and the geometry review queue already existed (see
-[Prior work vs. new work](README.md#prior-work-vs-new-work)). Alza's obstruction
-checking and ArchMorph's synchronized human/agent model inspired parts of the
-design; no code from either project was used.
+The access desk builds on Spatialize's floor-plan extraction, 3D twin, WebMCP
+tools and geometry review queue (see the [README](README.md)). Alza's
+obstruction checking and ArchMorph's synchronized human/agent model inspired
+parts of the design; no code from either project was used.
