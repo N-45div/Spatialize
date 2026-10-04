@@ -1,0 +1,491 @@
+{
+  "summary": {
+    "model": "gpt-5.6-luna",
+    "endpoint": "https://api.sanity.io/v1/context/organizations/ottnv0qew/mcp/spatialize-access-evidence",
+    "runs": 24,
+    "connected": 24,
+    "knowledgeBaseRead": 24,
+    "statesComputedVerdict": 24,
+    "statesADifferentVerdict": 0,
+    "citesASourceByTitle": 23,
+    "medianSeconds": 6.5,
+    "maxSeconds": 8.8
+  },
+  "runs": [
+    {
+      "question": "Can I reach the learning studio from the entrance?",
+      "clearanceMm": 800,
+      "verdict": "CLEAR",
+      "agentStatus": "connected",
+      "seconds": 8.8,
+      "answer": "Yes. The stored route to the Learning studio is CLEAR: 13.27 m from the entrance, with the stored route passing corridor and doorway checks. The Harbor Arts access guide, observed 2026-09-18, records the studio doorway as step-free. Geometry snapshot v1, observed 2026-07-29, is synthetic computed evidence and does not verify physical measurements.\n\nThis screens only the stored route, corridor, and doorway checks—not universal accessibility. Turning space, slope, headroom, and unrecorded obstacles were not assessed, and alternatives were not automatically considered. Harbor Arts is a fictional demo venue; these are not real-world observations.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "My wheelchair needs 1300 mm of clear width. Can I get into the learning studio?",
+      "clearanceMm": 1300,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 5.9,
+      "answer": "No. The stored route is BLOCKED: the studio doorway is recorded as 1200 mm wide, while you need 1300 mm. The route distance is 13.27 m. The “Harbor Arts access guide” (observed 2026-09-18) says studio access is step-free, but that does not overcome the width constraint. The result screens only the stored route corridor and doorway width; turning space, slope, headroom, obstacles, and possible alternative routes were not assessed. Harbor Arts is a fictional demo venue, and these are synthetic records—not real observations.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the gallery reachable today?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.0,
+      "answer": "No. The computed verdict is BLOCKED for the stored route to Gallery one, checked 2026-10-04 19:50 UTC. A verified synthetic observation, “Gallery trolley layout observation” (2026-10-03), records a trolley intersecting the route corridor. Moving it is only a proposed change, not confirmed.\n\nThis screens the stored route, not universal accessibility: alternatives may exist, but automatic rerouting was not performed. The prior “Completed gallery maintenance” notice (date not stated in the retrieved title; closure ended 2026-09-21) is expired and does not affect today’s assessment.\n\nHarbor Arts is a fictional demo venue; these are not real-world observations.",
+      "paths": [
+        [
+          "access_barriers",
+          "disputed_reports",
+          "doorway_access",
+          "facilities_maintenance",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the quiet room step-free?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.7,
+      "answer": "The quiet room is not confirmed step-free. The authoritative stored-route verdict is BLOCKED: a gallery trolley intersects the route, the doorway width and connectivity are unverified, and the route is not automatically rerouted.\n\nEvidence conflicts. “Harbor Arts access guide” (2026-09-18) states the doorway is step-free, while “Visitor report: quiet-room threshold” (2026-10-02) reports a raised threshold; no follow-up measurement resolves this. Harbor Arts is a fictional demo venue, so these are not real observations. This verdict screens the stored route, not universal accessibility.",
+      "paths": [
+        [
+          "access_barriers",
+          "disputed_reports",
+          "doorway_access",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Has anyone disagreed with the venue about access to the quiet room?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.6,
+      "answer": "Yes. The disagreement concerns the quiet-room doorway:\n\n- “Harbor Arts access guide” (2026-09-18) states that it is step-free; this is verified by the venue.\n- “Visitor report: quiet-room threshold” (2026-10-02) reports a raised threshold, meaning it may not be step-free; the venue disputes this report.\n\nNo follow-up measurement exists, so neither claim is settled. The computed verdict is BLOCKED for the stored route, also due to an intersecting gallery trolley and unconfirmed doorway width/connectivity. This screens the stored route, not universal accessibility. Harbor Arts is a fictional demo venue; these are not real-world observations.",
+      "paths": [
+        [
+          "disputed_reports",
+          "venue_guide",
+          "visitor_reports",
+          "doorway_access"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Was the gallery closed for maintenance, and does that still apply?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.5,
+      "answer": "Yes. A verified maintenance closure affected the gallery doorway/threshold from 2026-09-20 06:00 UTC to 2026-09-21 06:00 UTC. It ended on 21 September and is expired, so it no longer applies.\n\nSource: “Completed gallery maintenance” — Dataset.\n\nHowever, the current stored route remains BLOCKED because “Gallery trolley layout observation” (2026-10-03) reports a trolley intersecting the route corridor. The verdict screens the stored route, not universal accessibility, and does not establish that the gallery itself is closed. Harbor Arts is a fictional demo venue; these are synthetic records, not real-world observations.",
+      "paths": [
+        [
+          "facilities_maintenance",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Can I reach the learning studio from the entrance?",
+      "clearanceMm": 800,
+      "verdict": "CLEAR",
+      "agentStatus": "connected",
+      "seconds": 6.5,
+      "answer": "Yes. The computed verdict is CLEAR: the stored route from the entrance to the Learning studio passes the recorded corridor and doorway checks, with a clearance of 800 mm and a distance of 13.27 m.\n\nThe Harbor Arts access guide, observed September 18, 2026, states that studio access is step-free. “Geometry snapshot v1,” observed July 29, 2026, says the result is computed from stored route and doorway evidence and does not verify physical measurements.\n\nThis screens the stored route, not universal accessibility. Turning space, slope, headroom, and unrecorded obstacles were not assessed. Harbor Arts is a fictional demo venue; these are synthetic fixtures, not real observations.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "My wheelchair needs 1300 mm of clear width. Can I get into the learning studio?",
+      "clearanceMm": 1300,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.6,
+      "answer": "No. The computed verdict is BLOCKED: the stored route reaches the Learning studio, but the studio doorway is recorded as 1200 mm wide, while you require 1300 mm. The route distance is 13.27 m.\n\n“Harbor Arts access guide” (2026-09-18) verifies that studio access is step-free, but it does not address width. “Geometry snapshot v1” (2026-07-29) says the result is computed from stored route and doorway evidence and does not verify physical measurements.\n\nThis screens the stored route, not universal accessibility; alternatives were not automatically rerouted, and turning space, slope, headroom, and unrecorded obstacles were not assessed. Harbor Arts is a fictional demo venue, not a real observation.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the gallery reachable today?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.5,
+      "answer": "No. The computed verdict is BLOCKED for the stored route to Gallery one, checked 2026-10-04 19:51 UTC. A verified synthetic facilities record dated 2026-10-03 reports that a 0.8 × 0.8 m gallery trolley intersects the route (“Gallery trolley layout observation”), and no confirmed relocation is recorded. The proposed move is not a published change.\n\nThis screens only the stored route, not universal accessibility; alternatives may exist, but automatic rerouting was not performed. Harbor Arts is a fictional demo venue, so these are not real-world observations. The prior gallery maintenance closure (“Completed gallery maintenance,” dates 2026-09-20 to 2026-09-21) had expired and does not affect today’s assessment.",
+      "paths": [
+        [
+          "disputed_reports",
+          "access_barriers",
+          "doorway_access",
+          "facilities_maintenance",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the quiet room step-free?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 7.3,
+      "answer": "The stored route is BLOCKED, so it does not establish that the quiet room is step-free. A gallery trolley intersects the route, and the doorway’s width and connectivity remain unverified.\n\nEvidence conflicts: “Harbor Arts access guide” (2026-09-18) states the doorway is step-free, while “Visitor report: quiet-room threshold” (2026-10-02) reports a raised threshold. No follow-up measurement resolves the disagreement.\n\nThis verdict screens the stored route, not universal accessibility; alternatives were not automatically rerouted. Harbor Arts is a fictional demo venue, so these are not real-world observations.",
+      "paths": [
+        [
+          "disputed_reports",
+          "doorway_access",
+          "venue_guide",
+          "visitor_reports",
+          "access_barriers"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Has anyone disagreed with the venue about access to the quiet room?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.3,
+      "answer": "Yes. The disagreement concerns the quiet-room doorway at Harbor Arts.\n\nHarbor Arts access guide (observed 2026-09-18) states that the doorway is step-free, with the claim marked verified by the venue.\n\nVisitor report: quiet-room threshold (observed 2026-10-02) reports a raised threshold, meaning it is not step-free. The venue disputed this report, but no follow-up measurement exists. Both claims remain unresolved; neither should be treated as settled fact.\n\nThe computed verdict is BLOCKED for the stored route, also due to an intersecting gallery trolley and unconfirmed doorway width/connectivity. This screens the stored route, not universal accessibility. Harbor Arts is a fictional demo venue, and these are synthetic records.",
+      "paths": [
+        [
+          "disputed_reports",
+          "venue_guide",
+          "visitor_reports",
+          "doorway_access"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Was the gallery closed for maintenance, and does that still apply?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 5.9,
+      "answer": "Yes. A verified notice states that the gallery threshold was closed for maintenance from 20 September 2026 at 06:00 UTC until 21 September 2026 at 06:00 UTC. It is expired and does not still apply, according to “Completed gallery maintenance — Dataset” (date not specified in the retrieved source).\n\nHowever, the computed result remains BLOCKED because “Gallery trolley layout observation” (3 October 2026) reports a trolley intersecting the stored route corridor. This screens the stored route, not universal accessibility; it does not establish that the gallery itself is closed. Harbor Arts is a fictional demo venue, and the fixture is synthetic, not a real observation.",
+      "paths": [
+        [
+          "facilities_maintenance",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Can I reach the learning studio from the entrance?",
+      "clearanceMm": 800,
+      "verdict": "CLEAR",
+      "agentStatus": "connected",
+      "seconds": 7.2,
+      "answer": "Yes. The deterministic verdict is CLEAR: the stored route from the entrance to the Learning studio passes the requested corridor and doorway checks, with a 13.27 m route and 800 mm clearance.\n\nThis screens the stored route only, not universal accessibility. Turning space, slope, headroom, and unrecorded obstacles were not assessed, and alternatives were not considered.\n\nEvidence: “Geometry snapshot v1” (2026-07-29T16:00:00Z) records geometric validation, but says it does not verify physical measurements. “Harbor Arts access guide” (2026-09-18T10:00:00Z) states that studio access is step-free. Harbor Arts is a fictional demo venue, so these are not real-world observations. No relevant disagreement about the studio doorway was found.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "My wheelchair needs 1300 mm of clear width. Can I get into the learning studio?",
+      "clearanceMm": 1300,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.3,
+      "answer": "No. The stored route is BLOCKED: the studio doorway is recorded as 1200 mm wide, while you require 1300 mm. The route distance is 13.27 m. The verdict screens only this stored route and does not assess alternatives, turning space, slopes, headroom, or unrecorded obstacles.\n\n“Harbor Arts access guide” (observed 2026-09-18) says studio access is step-free, but that does not establish sufficient clear width. The geometry snapshot is synthetic and states that physical measurements are not verified. Harbor Arts is a fictional demo venue, so these are not real-world observations.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the gallery reachable today?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 7.0,
+      "answer": "No. The computed verdict is BLOCKED for the stored route to Gallery one as of 2026-10-04 19:52 UTC. A gallery trolley intersects the route corridor; its observation was logged by the Demo facilities team on 2026-10-03 (“Gallery trolley layout observation”). Relocating it is only proposed, not confirmed.\n\nThis screens the stored route, not universal accessibility: alternatives may exist, but automatic rerouting was not performed. “Geometry snapshot v1” (2026-07-29) also states that geometric validation does not verify physical measurements.\n\nHarbor Arts is a fictional demo venue, and these are synthetic fixtures—not real-world observations. The prior gallery maintenance closure ended 2026-09-21 (“Completed gallery maintenance”), so it does not affect today’s result.",
+      "paths": [
+        [
+          "access_barriers",
+          "disputed_reports",
+          "doorway_access",
+          "facilities_maintenance",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the quiet room step-free?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 7.2,
+      "answer": "The quiet room is not confirmed step-free. The computed verdict is BLOCKED for the stored route, due to a trolley obstructing the route, an unconfirmed doorway width and connectivity, and unresolved doorway evidence.\n\nSources disagree:\n- “Harbor Arts access guide” (2026-09-18) states the quiet-room doorway is step-free.\n- “Visitor report: quiet-room threshold” (2026-10-02) reports a raised threshold; this remains disputed, with no follow-up measurement.\n\nBecause the verdict is BLOCKED, the stored route should not be treated as clear. This screens the stored route only, not universal accessibility. Harbor Arts is a fictional demo venue, and these are not real-world fixture observations.",
+      "paths": [
+        [
+          "disputed_reports",
+          "doorway_access",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Has anyone disagreed with the venue about access to the quiet room?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.4,
+      "answer": "Yes. The disagreement concerns whether the quiet-room doorway is step-free:\n\nVenue claim: “Harbor Arts access guide,” dated 2026-09-18, says the doorway is step-free (verified by the venue).\n\nVisitor claim: “Visitor report: quiet-room threshold,” dated 2026-10-02, reports a raised threshold and says it is not step-free. The venue disputes this report.\n\nNo follow-up measurement exists, so neither claim is settled. The stored-route verdict is BLOCKED, also due to an intersecting gallery trolley and unconfirmed doorway width/connectivity; it screens that route, not universal accessibility. Harbor Arts is a fictional demo venue, and these are synthetic records.",
+      "paths": [
+        [
+          "disputed_reports",
+          "venue_guide",
+          "visitor_reports",
+          "doorway_access"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Was the gallery closed for maintenance, and does that still apply?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.5,
+      "answer": "Yes. A verified notice recorded a maintenance closure of the gallery doorway/threshold from September 20, 2026 at 06:00 to September 21, 2026 at 06:00. It ended on September 21 and is expired, so it no longer applies.\n\nHowever, the current stored route remains BLOCKED: “Gallery trolley layout observation,” observed October 3, 2026, says a trolley intersects the route corridor. The proposed relocation is not a published change. This verdict screens the stored route, not universal accessibility. Harbor Arts is a fictional demo venue, and these are synthetic records.",
+      "paths": [
+        [
+          "facilities_maintenance",
+          "disputed_reports",
+          "venue_guide"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Can I reach the learning studio from the entrance?",
+      "clearanceMm": 800,
+      "verdict": "CLEAR",
+      "agentStatus": "connected",
+      "seconds": 6.2,
+      "answer": "Yes, according to the deterministic result, the stored route from the entrance to the Learning studio is CLEAR. It is 13.27 m long, and the stored route passes the corridor and doorway checks at 800 mm clearance.\n\nThe venue guide, “Harbor Arts access guide” (observed 2026-09-18), states that studio access is step-free. Harbor Arts is a fictional demo venue, so this is not a real-world observation.\n\nThis verdict screens only the stored route, not universal accessibility. Turning space, slope, headroom, and unrecorded obstacles were not assessed; automatic rerouting is not performed.",
+      "paths": [
+        [
+          "doorway_access",
+          "venue_guide",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "My wheelchair needs 1300 mm of clear width. Can I get into the learning studio?",
+      "clearanceMm": 1300,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.5,
+      "answer": "No. The stored route is BLOCKED for your 1,300 mm requirement: the studio doorway is recorded as 1,200 mm wide, leaving it 100 mm short.\n\nThe route geometry validator notes that physical measurements are not independently verified. The Harbor Arts access guide, observed 2026-09-18, says the studio doorway is step-free, but that does not establish sufficient width. Harbor Arts is a fictional synthetic demo venue, not a real observation.\n\nThis verdict screens only the stored route corridor and doorway width; it does not assess turning space, slopes, headroom, obstacles, or possible alternative routes.",
+      "paths": [
+        [
+          "doorway_access",
+          "disputed_reports",
+          "venue_guide"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Is the gallery reachable today?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 7.0,
+      "answer": "No. The computed verdict is BLOCKED for the stored route to Gallery one, checked 2026-10-04. A verified synthetic observation dated 2026-10-03 records a gallery trolley intersecting the route; its proposed relocation is not confirmed.\n\nThis screens only the stored route, not universal accessibility. Alternatives may exist, but automatic rerouting was not performed. The prior “Completed gallery maintenance” notice (ended 2026-09-21) is expired and does not affect today’s assessment.\n\nHarbor Arts is a fictional demo venue, so these are not real-world observations.",
+      "paths": [
+        [
+          "access_barriers",
+          "disputed_reports",
+          "doorway_access",
+          "facilities_maintenance",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": false
+    },
+    {
+      "question": "Is the quiet room step-free?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.4,
+      "answer": "The quiet room is not confirmed step-free. The stored route’s verdict is BLOCKED, due to an intersecting gallery trolley, unconfirmed doorway width and connectivity, and unresolved doorway evidence. The “Harbor Arts access guide” (2026-09-18) states the doorway is step-free, while “Visitor report: quiet-room threshold” (2026-10-02) reports a raised threshold; the disagreement remains unresolved with no follow-up measurement. Harbor Arts is a fictional demo venue, so these are not real observations. This verdict screens the stored route, not universal accessibility.",
+      "paths": [
+        [
+          "disputed_reports",
+          "doorway_access",
+          "venue_guide",
+          "visitor_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Has anyone disagreed with the venue about access to the quiet room?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.9,
+      "answer": "Yes. The disagreement concerns the quiet-room doorway’s step-free status:\n\nHarbor Arts access guide, observed 2026-09-18: the venue states the doorway is step-free, with a verified claim.\n\nVisitor report: quiet-room threshold, observed 2026-10-02: a visitor reports a raised threshold, so it may not be step-free. The venue disputes this report, which remains unresolved because no follow-up measurement exists.\n\nThe stored route’s verdict is BLOCKED, not a universal accessibility determination. Harbor Arts is a fictional demo venue, and these are synthetic records rather than real observations.",
+      "paths": [
+        [
+          "disputed_reports",
+          "venue_guide",
+          "visitor_reports",
+          "doorway_access"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    },
+    {
+      "question": "Was the gallery closed for maintenance, and does that still apply?",
+      "clearanceMm": 800,
+      "verdict": "BLOCKED",
+      "agentStatus": "connected",
+      "seconds": 6.4,
+      "answer": "Yes. A verified notice stated that the gallery doorway/threshold was closed for maintenance from 2026-09-20 06:00 UTC to 2026-09-21 06:00 UTC (“Gallery maintenance closure,” Facilities Notices & Temporary Closures). It ended on 21 September 2026 and no longer applies.\n\nHowever, the current stored route is BLOCKED because “Gallery trolley layout observation” (observed 2026-10-03) reports a trolley intersecting the route. The verdict screens the stored route, not universal accessibility. Harbor Arts is a fictional demo venue, and the fixture evidence is synthetic—not a real-world observation.",
+      "paths": [
+        [
+          "facilities_maintenance",
+          "disputed_reports"
+        ]
+      ],
+      "knowledgeBaseRead": true,
+      "statesVerdict": true,
+      "statesOtherVerdict": false,
+      "citesSource": true
+    }
+  ]
+}
