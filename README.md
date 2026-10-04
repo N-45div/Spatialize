@@ -13,7 +13,7 @@ written by a model.
 **API:** https://spatialize.onrender.com (free instance; the first request after an idle spell wakes it, which
 takes a few seconds)
 **Docs:** [ACCESS_DESK.md](ACCESS_DESK.md) (evidence, Sanity, the evidence agent) ·
-[WEBMCP.md](WEBMCP.md) (the agent surface) · [EVALS.md](EVALS.md) (every claim, measured) ·
+[EVALS.md](EVALS.md) (every claim, measured) ·
 [ARCHITECTURE.md](ARCHITECTURE.md)
 
 The demo venue, Harbor Arts Centre, is fictional, and its reports and obstacles are labelled synthetic fixtures.
@@ -120,7 +120,7 @@ Tools register per venue on `document.modelContext` and follow Chrome's publishe
 [best practices](https://developer.chrome.com/docs/ai/webmcp/best-practices),
 [tool security](https://developer.chrome.com/docs/ai/webmcp/secure-tools) and
 [agent security](https://developer.chrome.com/docs/agents/security) guidance. Tests hold every result inside the
-1.5K budget on a venue far larger than the demo. Full design notes are in [WEBMCP.md](WEBMCP.md).
+1.5K budget on a venue far larger than the demo. The tools live in [`src/webmcp/`](src/webmcp).
 
 ## Speak instead of type
 
