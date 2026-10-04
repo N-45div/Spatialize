@@ -94,11 +94,18 @@ def check_access(scene, state, destination_id, clearance_mm, scene_version, now=
     for claim in relevant_claims:
         evidence_ids.add(claim.source_id)
         grouped.setdefault((claim.entity_id, claim.property), []).append(claim)
-        if claim.status != "verified" or claim.source_id not in sources:
+        if claim.source_id not in sources:
+            reason(uncertain, claim.entity_id, "An access claim cites a source that is no longer on record")
+        elif claim.status != "verified":
+            stated = (
+                ("step-free" if claim.value else "a step or access barrier")
+                if claim.property == "step-free"
+                else f"a clear width of {claim.value:g} mm"
+            )
             reason(
                 uncertain,
                 claim.entity_id,
-                "An access claim is unresolved or lacks its source",
+                f"{sources[claim.source_id].title} reports {stated}; this claim is {claim.status}",
                 claim.source_id,
             )
         elif claim.property == "step-free" and claim.value is False:

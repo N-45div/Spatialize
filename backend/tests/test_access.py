@@ -33,6 +33,11 @@ def test_evidence_verdicts_and_width_uncertainty():
     assert {s["id"] for s in result["evidence"]} == {"scene-v1", "source-venue", "source-visitor"}
     assert {c["value"] for c in result["claims"]} == {True, False}
     assert any("Sources disagree" in r["message"] for r in result["reasons"])
+    assert any(
+        r["message"] == "Visitor report: quiet-room threshold reports a step or access barrier; this claim is disputed"
+        and r["sourceId"] == "source-visitor"
+        for r in result["reasons"]
+    )
     assert check_access(scene, state, "studio-mark", 800, 1)["verdict"] == "CLEAR"
     scene["doors"][1]["evidence"]["width"]["confidence"] = 0.5
     assert check_access(scene, state, "studio-mark", 1300, 1)["verdict"] == "UNKNOWN"
