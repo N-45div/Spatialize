@@ -1,0 +1,10 @@
+*[_type == "accessSource" && venue._ref == "harbor-arts-ground" && !string::startsWith(_id, "review-")]{
+  _id, title, publisher, url, observedAt, synthetic, body,
+  "venue": venue->title,
+  "claims": *[_type == "accessClaim" && source._ref == ^._id]{
+    property, stepFree, widthMm, status, "about": entity->title, "aboutKind": entity->kind},
+  "notices": *[_type == "operationalNotice" && source._ref == ^._id]{
+    title, startsAt, endsAt, status, "about": entity->title},
+  "obstacles": *[_type == "accessObstacle" && source._ref == ^._id]{
+    label, roomId, position, width, depth, verified}
+}
