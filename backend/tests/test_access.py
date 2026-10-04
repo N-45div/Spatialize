@@ -233,6 +233,43 @@ def test_agent_records_real_mcp_calls_without_changing_verdict():
     assert calls[0]["store"] is False
 
 
+def mcp_client(*calls, text="Both claims stay on record."):
+    output = [
+        SimpleNamespace(type="mcp_call", name=name, arguments="{}", output="entry", error=error)
+        for name, error in calls
+    ]
+    return SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: SimpleNamespace(output_text=text, output=output))
+    )
+
+
+def test_agent_needs_a_real_knowledge_base_read_but_survives_a_recovered_failure():
+    settings = Settings(
+        _env_file=None,
+        openai_api_key="test",
+        sanity_context_token="org-test",
+        sanity_context_url="https://api.sanity.io/v1/context/organizations/org/mcp/access",
+    )
+    question = AccessQuestion(destination_id="quiet-mark")
+    outline_only = enrich_answer(settings, question, {}, mcp_client(("initial_context", None)))
+    assert outline_only["agentStatus"] == "unavailable"
+    assert outline_only["agentSummary"] is None
+    recovered = enrich_answer(
+        settings,
+        question,
+        {},
+        mcp_client(
+            ("initial_context", None),
+            ("knowledge_base_read", "Unknown entry path"),
+            ("knowledge_base_read", None),
+        ),
+    )
+    assert recovered["agentStatus"] == "connected"
+    assert [r["successful"] for r in recovered["contextReads"]] == [True, False, True]
+    silent = enrich_answer(settings, question, {}, mcp_client(("knowledge_base_read", None), text=" "))
+    assert silent["agentStatus"] == "unavailable"
+
+
 def test_scene_version_change_invalidates_move(tmp_path):
     with make_client(tmp_path) as client:
         run = client.post("/api/runs/demo").json()
